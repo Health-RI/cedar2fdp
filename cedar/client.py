@@ -1,4 +1,5 @@
 import requests
+from typing import List
 
 class Client():
     def __init__(self, api_key: str, endpoint: str ='https://repo.metadatacenter.org') -> None:
@@ -9,9 +10,14 @@ class Client():
         r = requests.get(f'{self.endpoint}/templates/{id}', headers=self.headers)
         return Template(src=r.json())
 
-    def get_template_instance(self, id: str) -> dict:
-        r = requests.get(f'{self.endpoint}/template-instances/{id}', headers=self.headers) #TODO format?
-        return r.json() # defaults to json-ld
+    def get_template_instance(self, id: str) -> str:
+        url = id if id.startswith('https://') else f'{self.endpoint}/template-instances/{id}'
+        r = requests.get(url, headers=self.headers) #TODO format?
+        return r.text # defaults to json-ld
+
+    def search_instances(self, template_id: str, endpoint: str='https://resource.metadatacenter.org') -> List[str]:
+        r = requests.get(f'{endpoint}/search', headers=self.headers, params={'is_based_on': f'{self.endpoint}/templates/{template_id}'})
+        return [resource['@id'] for resource in r.json()['resources']]
 
 class Schema:
     def __init__(self, **kwargs) -> None:
@@ -57,6 +63,7 @@ class Schema:
 from rdflib import Graph, Namespace, URIRef, Literal, BNode
 from rdflib.namespace import RDF, DCTERMS, RDFS
 SH = Namespace('http://www.w3.org/ns/shacl#')
+DASH = Namespace('http://datashapes.org/dash#')
 
 class Shape:
     def write(self, graph: Graph, node: URIRef = None, rel: URIRef = SH.property, group: URIRef = None) -> None:
@@ -86,6 +93,7 @@ class Template(Schema, Shape):
 
     def write(self, graph: Graph, node: URIRef = None, rel: URIRef = SH.property, group: URIRef = None) -> None:
         graph.bind('sh', SH)
+        graph.bind('dash', DASH)
 
         s = URIRef(self.src['@id'])
         graph.add((s, RDF.type, SH.NodeShape))
@@ -109,10 +117,10 @@ class TemplateField(Schema, Shape):
         # data type
         dt = self.get_datatype()
         mapping = {
-            'link': { 'nodekind': SH.BlankNodeOrIRI },
-            'textfield': { 'nodekind': SH.BlankNodeOrLiteral },
-            'temporal': { 'tpl': ('_valueConstraints', 'temporalType') },
-            'numeric': { 'tpl': ('_valueConstraints', 'numberType') }
+            'link': { 'nodekind': SH.BlankNodeOrIRI, 'viewer': DASH.URIViewer, 'editor': DASH.URIEditor },
+            'textfield': { 'nodekind': SH.BlankNodeOrLiteral, 'viewer': DASH.LiteralViewer, 'editor': DASH.LiteralEditor },
+            'temporal': { 'stuff': ('_valueConstraints', 'temporalType'), 'viewer': DASH.LiteralViewer, 'editor': DASH.LiteralEditor },
+            'numeric': { 'stuff': ('_valueConstraints', 'numberType'), 'viewer': DASH.LiteralViewer, 'editor': DASH.LiteralEditor }
         }
         if dt in mapping:
             m = mapping[dt]
@@ -122,10 +130,13 @@ class TemplateField(Schema, Shape):
                     graph.add((s, SH.nodeKind, SH.BlankNodeOrIRI))
                 else:
                     graph.add((s, SH.nodeKind, m['nodekind']))
-            elif 'tpl' in m:
-                k, v = m['tpl']
+            elif 'stuff' in m:
+                k, v = m['stuff']
                 x = self.resolve_prefixed(self.src[k][v])
                 graph.add((s, SH.datatype, URIRef(x)))
+
+            graph.add((s, DASH.viewer, m['viewer']))
+            graph.add((s, DASH.editor, m['editor']))
 
         # TODO cardinality
 
@@ -156,6 +167,8 @@ class TemplateElement(Template):
         graph.add((s, SH.path, URIRef(self.get_predicate())))
         graph.add((s, SH.node, URIRef(self.src['@id'])))
         graph.add((s, SH.name, Literal(self.get_title())))
+        graph.add((s, DASH.viewer, DASH.DetailsViewer))
+        graph.add((s, DASH.editor, DASH.DetailsEditor))
         graph.add((node, rel, s))
 
         super().write(graph, node, rel, grp)
