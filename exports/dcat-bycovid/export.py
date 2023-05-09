@@ -2,23 +2,36 @@ import yaml
 from cedar.client import Client
 from rdflib import Graph, URIRef, Literal, BNode, RDF, DCAT, DCTERMS, FOAF
 
-def do_stuff(mapping_table: dict, subject: str, g: Graph, export: Graph) -> None:
+from typing import Dict, Tuple, List, Union, Any
+
+
+def get_object_recursively(mapping: Tuple, parent_subject: URIRef, g: Graph, obj_list: List) -> List:
+    for index, predicate_chain_node in enumerate(mapping):
+        child_nodes = [x for x in g.triples((parent_subject, URIRef(predicate_chain_node), None))]
+        for node in child_nodes:
+            (child_subject, child_predicate, child_object) = node
+            target_object = child_object
+            temp_subject = child_object
+            if predicate_chain_node == mapping[-1]:
+                obj_list.append(target_object)
+            else:
+                get_object_recursively(mapping=mapping[index + 1::], parent_subject=temp_subject, g=g, obj_list=obj_list)
+    return obj_list
+
+
+def do_stuff(mapping_table: dict, subject: URIRef, g: Graph, export: Graph) -> None:
     for target_predicate, mapping in mapping_table.items():
         temp_subject = subject
-        temp_object = None
+        obj_list = []
+        result = get_object_recursively(mapping, temp_subject, g, obj_list)
 
-        for predicate_chain_node in mapping:
-            for xs,xp,xo in g.triples((temp_subject, URIRef(predicate_chain_node), None)):
-                #temp_object = g.value(subject=temp_subject, predicate=URIRef(predicate_chain_node))
-                temp_object = xo
-                temp_subject = temp_object
-
-        if temp_object is None:
+        if result is None:
             raise Exception(f"Could not find target value for predicate chain {mapping}")
+        for node in result:
+            export.add((s, URIRef(target_predicate), node))
 
-        export.add((s, URIRef(target_predicate), temp_object))
 
-if __name__=='__main__':
+if __name__ == '__main__':
     config = yaml.safe_load(open('../../config.yml', 'r'))
     client = Client(api_key=config['cedar']['apikey'])
 
