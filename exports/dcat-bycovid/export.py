@@ -1,5 +1,5 @@
 import yaml
-from cedar.client import Client
+from cedar.client import CedarClient
 from rdflib import Graph, URIRef, Literal, BNode, RDF, DCAT, DCTERMS, FOAF
 
 from typing import Dict, Tuple, List, Union, Any
@@ -31,7 +31,7 @@ def do_stuff(mapping_table: dict, subject: URIRef, g: Graph, export: Graph) -> N
 
 if __name__ == '__main__':
     config = yaml.safe_load(open('../../config.yml', 'r'))
-    client = Client(api_key=config['cedar']['apikey'])
+    client = CedarClient(api_key=config['cedar']['apikey'])
 
     admin_template = "https://repo.metadatacenter.org/templates/337cb6f3-eef6-4b2f-9ffb-3f6d6cc9b9ac"
     content_template = "https://repo.metadatacenter.org/templates/908e33e2-9485-4a93-ab22-1688dc5819dc"
