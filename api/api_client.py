@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 class BasicAPIClient:
     """Basic class for API client"""
+
     def __init__(self, base_url, headers):
         self.base_url = base_url
         self.headers = headers
@@ -24,7 +25,9 @@ class BasicAPIClient:
             raise ValueError(f"Unsupported method {method}")
         url = urljoin(self.base_url, path)
         try:
-            response = self.session.request(method, url, params=params, data=data, verify=self.ssl_verification)
+            response = self.session.request(
+                method, url, params=params, data=data, verify=self.ssl_verification
+            )
             response.raise_for_status()
             return response
         except requests.exceptions.HTTPError as e:

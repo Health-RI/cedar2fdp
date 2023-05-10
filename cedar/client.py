@@ -1,43 +1,51 @@
-import requests
-from typing import List
+from typing import List, Iterator
 from rdflib import Graph, Namespace, URIRef, Literal, BNode
-from rdflib.namespace import RDF, DCTERMS, RDFS
-from typing import Iterator
+from rdflib.namespace import RDF, RDFS
 
+from api.api_client import BasicAPIClient
 
 SH = Namespace("http://www.w3.org/ns/shacl#")
 DASH = Namespace("http://datashapes.org/dash#")
 
 
-class Client:
-    def __init__(
-        self, api_key: str, endpoint: str = "https://repo.metadatacenter.org"
-    ) -> None:
-        self.endpoint = endpoint
-        self.headers = {"Authorization": f"apiKey {api_key}"}
+class CedarEndPoints:
+    base = "https://repo.metadatacenter.org"
+    base_resource = "https://resource.metadatacenter.org"
+    templates = f"{base}/templates"
+    template_instances = f"{base}/template-instances"
+    search = f"{base_resource}/search"
 
-    def get_template(self, id: str) -> "Template":
-        r = requests.get(f"{self.endpoint}/templates/{id}", headers=self.headers)
-        return Template(src=r.json())
 
-    def get_template_instance(self, id: str) -> str:
+class CedarClient(BasicAPIClient):
+    """API client to connect to cedar API"""
+
+    def __init__(self, api_key: str, base_url: str = CedarEndPoints.base):
+        headers = {"Authorization": f"apiKey {api_key}"}
+        super().__init__(base_url, headers)
+
+    def get_template(self, template_id: str) -> "Template":
+        """Gets template data by id and converts it to Template object"""
+        path = f"{CedarEndPoints.templates}/{template_id}"
+        response = self.get(path=path)
+        return Template(src=response.json())
+
+    def get_template_instance(self, template_instance_id: str) -> str:
         url = (
-            id
-            if id.startswith("https://")
-            else f"{self.endpoint}/template-instances/{id}"
+            template_instance_id
+            if template_instance_id.startswith("https://")
+            else f"{CedarEndPoints.template_instances}/{template_instance_id}"
         )
-        r = requests.get(url, headers=self.headers)  # TODO format?
-        return r.text  # defaults to json-ld
+        response = self.get(path=url)
+        return response.text  # defaults to json-ld
 
-    def search_instances(
-        self, template_id: str, endpoint: str = "https://resource.metadatacenter.org"
-    ) -> List[str]:
-        r = requests.get(
-            f"{endpoint}/search",
-            headers=self.headers,
-            params={"is_based_on": f"{self.endpoint}/templates/{template_id}"},
+    def search_instances(self, template_id: str) -> List[str]:
+        """Searches template instances belonging to a template with certain id
+        returns a list of template instances ids"""
+        response = self.get(
+            path=CedarEndPoints.search,
+            params={"is_based_on": f"{CedarEndPoints.templates}/{template_id}"},
         )
-        return [resource["@id"] for resource in r.json()["resources"]]
+        return [resource["@id"] for resource in response.json()["resources"]]
 
 
 class Schema:
@@ -63,10 +71,10 @@ class Schema:
 
     def resolve_prefixed(self, pname: str) -> str:
         if ":" in pname:
-            prefix, localname = pname.split(":")
+            prefix, local_name = pname.split(":")
             if prefix in self.src["@context"]:
                 ns = self.src["@context"][prefix]
-                return ns + localname
+                return ns + local_name
 
     def get_datatype(self) -> str:
         if "_ui" in self.src:

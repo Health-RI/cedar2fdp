@@ -1,11 +1,11 @@
 import yaml
-from cedar.client import Client
+from cedar.client import CedarClient
 from fdp import Client as FDPClient
 from rdflib import Graph, URIRef, Literal, BNode, RDF, DCAT, DCTERMS, FOAF
 
 
 def post_cedar_instance_to_fdp(
-    cedar_client: Client, template_id: str, config: dict
+    cedar_client: CedarClient, template_id: str, config: dict
 ) -> None:
     client = FDPClient("https://health-ri.sandbox.semlab-leiden.nl")
     client.login(config["fdp"]["username"], config["fdp"]["password"])
@@ -46,6 +46,6 @@ def post_cedar_instance_to_fdp(
 if __name__ == "__main__":
     config = yaml.safe_load(open("config.yml", "r"))
 
-    client = Client(api_key=config["cedar"]["apikey"])
+    client = CedarClient(api_key=config["cedar"]["apikey"])
     covid_admin_template = "337cb6f3-eef6-4b2f-9ffb-3f6d6cc9b9ac"
     post_cedar_instance_to_fdp(client, covid_admin_template, config)
