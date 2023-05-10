@@ -10,12 +10,10 @@ def get_object_recursively(mapping: Tuple, parent_subject: URIRef, g: Graph, obj
         child_nodes = [x for x in g.triples((parent_subject, URIRef(predicate_chain_node), None))]
         for node in child_nodes:
             (child_subject, child_predicate, child_object) = node
-            target_object = child_object
-            temp_subject = child_object
             if predicate_chain_node == mapping[-1]:
-                obj_list.append(target_object)
+                obj_list.append(child_object)
             else:
-                get_object_recursively(mapping=mapping[index + 1::], parent_subject=temp_subject, g=g, obj_list=obj_list)
+                get_object_recursively(mapping=mapping[index + 1::], parent_subject=child_object, g=g, obj_list=obj_list)
     return obj_list
 
 
