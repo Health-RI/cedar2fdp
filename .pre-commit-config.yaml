@@ -1,0 +1,47 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.3.0
+    hooks:
+      - id: check-yaml
+      - id: end-of-file-fixer
+        exclude: snapshots*|example-(input|output)*
+      - id: trailing-whitespace
+  - repo: https://github.com/psf/black
+    rev: 22.6.0
+    hooks:
+      - id: black
+        exclude: snapshots
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: "v2.7.1"
+    hooks:
+      - id: prettier
+        exclude: Pipfile.lock|poetry.lock|example-(input|output)*|snapshots*
+  - repo: https://github.com/PyCQA/autoflake
+    rev: v1.4
+    hooks:
+      - id: autoflake
+        exclude: snapshots/|\.venv/|/__pycache__/
+        args:
+          - --in-place
+          - --remove-all-unused-imports
+
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        exclude: snapshots/|\.venv/|/__pycache__/|dist/
+        args:
+          - --profile=black
+          - --line-length=88
+  - repo: https://github.com/pycqa/pylint
+    rev: v2.14.5
+    hooks:
+      - id:
+          pylint
+          # Fail only in the direst of circumstances
+        args:
+          [--fail-under=0]
+          # always print output even when it passes
+        verbose: true
