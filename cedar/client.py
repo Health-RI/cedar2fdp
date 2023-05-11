@@ -1,8 +1,9 @@
-from typing import List, Iterator
-from rdflib import Graph, Namespace, URIRef, Literal, BNode
+from typing import Iterator, List
+
+from rdflib import BNode, Graph, Literal, Namespace, URIRef
 from rdflib.namespace import RDF, RDFS
 
-from api.api_client import BasicAPIClient
+from core.api_client import BasicAPIClient
 
 SH = Namespace("http://www.w3.org/ns/shacl#")
 DASH = Namespace("http://datashapes.org/dash#")

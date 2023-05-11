@@ -1,7 +1,11 @@
 import yaml
+from rdflib import DCAT, DCTERMS, FOAF, RDF, BNode, Graph, Literal, URIRef
+
 from cedar.client import CedarClient
+from core.logger import get_logger
 from fdp import Client as FDPClient
-from rdflib import Graph, URIRef, Literal, BNode, RDF, DCAT, DCTERMS, FOAF
+
+logger = get_logger()
 
 
 def post_cedar_instance_to_fdp(
@@ -13,7 +17,7 @@ def post_cedar_instance_to_fdp(
     count = 0
 
     for resource in cedar_client.search_instances(template_id):
-        print(f"{count}: {resource}")
+        logger.info(f"{count}: {resource}")
         tpl_instance = cedar_client.get_template_instance(resource)
         foo = Graph().parse(data=tpl_instance, format="json-ld")
 
@@ -38,7 +42,7 @@ def post_cedar_instance_to_fdp(
         try:
             client.post(resource_type="project-admin", metadata=foo)
         except:
-            print(f"  failed {resource}")
+            logger.error(f"  failed {resource}")
 
         count += 1
 

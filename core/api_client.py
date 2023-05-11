@@ -1,11 +1,11 @@
 import logging
-import requests
 import sys
-
-from requests import Response
 from typing import Dict
 from urllib.parse import urljoin
 
+import requests
+import urllib3
+from requests import Response
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,7 @@ class BasicAPIClient:
         self.session = requests.session()
         self.session.headers.update(self.headers)
         self.ssl_verification = False
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     def _call_method(self, method, path, params: Dict = None, data=None):
         if method.upper() not in ["GET", "POST", "PUT", "DELETE"]:
