@@ -1,7 +1,7 @@
 from typing import List, Tuple
 
 import yaml
-from rdflib import DCAT, DCTERMS, RDF, Graph, URIRef
+from rdflib import DCAT, DCTERMS, RDF, RDFS, Graph, URIRef
 
 from cedar.client import CedarClient
 from core.logger import get_logger
@@ -15,7 +15,7 @@ ADMIN_TEMPLATE_MAPPING = {
         "https://schema.metadatacenter.org/properties/a48e48af-7e98-4174-9d1d-5a7b7cf0b788",
         "http://purl.org/dc/elements/1.1/title",
     ),
-    "urn:creator": (
+    "http://purl.org/dc/terms/creator": (
         "https://schema.metadatacenter.org/properties/e7f6696a-4e6b-491f-9429-23037579452e",
         "https://schema.metadatacenter.org/properties/6455acbe-f02d-4628-8748-b3e98649076c",
         "https://schema.metadatacenter.org/properties/fe7e40b0-8c55-4221-bc82-399e80d19846",
@@ -57,23 +57,117 @@ def get_object_recursively(
     return obj_list
 
 
-def do_stuff(mapping_table: dict, subject: URIRef, g: Graph, export: Graph) -> None:
+def do_stuff(mapping_table: dict, source_subject: URIRef, target_subject:URIRef, g: Graph, export: Graph) -> None:
     for target_predicate, mapping in mapping_table.items():
-        temp_subject = subject
         obj_list = []
-        result = get_object_recursively(mapping, temp_subject, g, obj_list)
+        result = get_object_recursively(mapping, source_subject, g, obj_list)
 
         if result is None:
             raise Exception(
                 f"Could not find target value for predicate chain {mapping}"
             )
         for node in result:
-            export.add((s, URIRef(target_predicate), node))
+            export.add((target_subject, URIRef(target_predicate), node))
 
+def write_catalogs(client: CedarClient, export: Graph, admin_to_content_mapping: dict) -> dict:
+    content_template_id = "908e33e2-9485-4a93-ab22-1688dc5819dc"
+
+    focus_area_mapping = (
+        "https://schema.metadatacenter.org/properties/7cb60a0c-4931-454a-8fca-1fd3faa8462f",
+        "https://schema.metadatacenter.org/properties/40a3e466-85b3-429e-bf27-ccb31bf3c667",
+        "https://schema.metadatacenter.org/properties/d6df6cc7-9902-430f-910f-096ae895e3fe",
+    )
+    admin_template_mapping = (
+        "https://schema.metadatacenter.org/properties/bf746fc0-2d59-476a-b630-6d704e1a8caf",
+        "https://schema.metadatacenter.org/properties/d9ff53e9-7762-4b0b-a466-c750148b3baa",
+        "https://schema.metadatacenter.org/properties/7e519671-cb71-4bb9-8540-49989f5ca3db",
+    )
+
+    catalogs = {}
+
+    for content_instance_id in client.search_instances(content_template_id):
+        content_instance = client.get_template_instance(content_instance_id)
+        graph = Graph().parse(data=content_instance, format="json-ld")
+
+        obj_list = []
+        get_object_recursively(mapping=focus_area_mapping, parent_subject=URIRef(content_instance_id), g=graph, obj_list=obj_list)
+
+        if len(obj_list) != 1:
+            raise Exception(f"catalog {content_instance_id} contains more than 1 focus area")
+        focus_area = obj_list[0]
+
+        if focus_area not in catalogs:
+            catalogs[focus_area] = {
+                "content_instances": [],
+                "label": graph.value(subject=URIRef(focus_area), predicate=RDFS.label)
+            }
+        catalogs[focus_area]["content_instances"].append(content_instance_id)
+
+        x_list = []
+        get_object_recursively(mapping=admin_template_mapping, parent_subject=URIRef(content_instance_id), g=graph, obj_list=x_list)
+        if len(x_list) == 0:
+            logger.warning(f"content template instance {content_instance_id} does not contain a link to its admin template instance")
+            continue
+        admin_template_id = x_list[0]
+
+        admin_to_content_mapping[f"{admin_template_id}"] = content_instance_id
+
+    # bind namespaces in case they're not bound yet
+    export.bind("dcat", DCAT)
+    export.bind("dcterms", DCTERMS)
+
+    resulting_catalog_mapping = {}
+
+    count = 0
+    for k,v in catalogs.items():
+        s = URIRef(f"http://example.com/catalog/{count}")
+
+        count += 1
+
+        export.add((s, RDF.type, DCAT.Catalog))
+        export.add((s, DCTERMS.title, v["label"]))
+        export.add((s, DCAT.theme, URIRef(k)))
+
+        for content_instance_id in v["content_instances"]:
+            resulting_catalog_mapping[content_instance_id] = s
+
+    return resulting_catalog_mapping
+
+def write_datasets(client: CedarClient, export: Graph, content_to_catalog_mapping: dict, admin_to_content_mapping: dict) -> None:
+    admin_template_id = "337cb6f3-eef6-4b2f-9ffb-3f6d6cc9b9ac"
+
+    count = 0
+
+    for admin_instance_id in client.search_instances(admin_template_id):
+        admin_instance = client.get_template_instance(admin_instance_id)
+        graph = Graph().parse(data=admin_instance, format="json-ld")
+
+        s = URIRef(f"http://example.com/dataset/{count}")
+        count += 1
+
+        export.add((s, RDF.type, DCAT.Dataset))
+        do_stuff(mapping_table=ADMIN_TEMPLATE_MAPPING, source_subject=URIRef(admin_instance_id), target_subject=s, g=graph, export=export)
+
+        if admin_instance_id in admin_to_content_mapping:
+            content_id = admin_to_content_mapping[admin_instance_id]
+
+            if content_id in content_to_catalog_mapping:
+                catalog_id = content_to_catalog_mapping[content_id]
+                export.add((catalog_id, DCAT.dataset, s))
+            else:
+                logger.warning(f"content instance id {content_id} was not mapped to a catalog")
+        else:
+            logger.warning(f"admin instance id {admin_instance_id} was not mapped to a content instance")
 
 if __name__ == "__main__":
     config = yaml.safe_load(open("../../config.yml", "r"))
     client = CedarClient(api_key=config["cedar"]["apikey"])
+
+    ex = Graph()
+    admin_to_content_mapping = {}
+    catalog_mapping = write_catalogs(client=client, export=ex, admin_to_content_mapping=admin_to_content_mapping)
+    write_datasets(client=client, export=ex, content_to_catalog_mapping=catalog_mapping, admin_to_content_mapping=admin_to_content_mapping)
+    print(ex.serialize())
 
     admin_template = (
         "https://repo.metadatacenter.org/templates/337cb6f3-eef6-4b2f-9ffb-3f6d6cc9b9ac"
@@ -119,6 +213,6 @@ if __name__ == "__main__":
     export.add((s, RDF.type, DCAT.Dataset))
 
     # find triples based on mapping
-    do_stuff(ADMIN_TEMPLATE_MAPPING, s, g, export)
+    do_stuff(ADMIN_TEMPLATE_MAPPING, source_subject=s, target_subject=s, g=g, export=export)
 
     logger.info(export.serialize())
