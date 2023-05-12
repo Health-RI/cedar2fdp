@@ -1,29 +1,31 @@
 import requests
 from rdflib import Graph
 
+from core.api_client import BasicAPIClient
 
-class Client:
-    """
-    Lightweight FAIR Data Point client.
-    """
 
-    def __init__(self, endpoint: str) -> None:
-        self.endpoint = endpoint
-        self.token = None
+class FDPClient(BasicAPIClient):
+    """Client for FAIR Data Point client"""
 
-    def login(self, username: str, password: str) -> None:
-        r = requests.post(
-            f"{self.endpoint}/tokens", json={"email": username, "password": password}
+    def __init__(self, base_url: str, username: str, password: str):
+        self.username = username
+        self.password = password
+        self.token = self.login_fdp(base_url)
+        headers = self.get_headers()
+        super().__init__(base_url, headers)
+
+    def login_fdp(self, base_url: str) -> str:
+        token_response = requests.post(
+            f"{base_url}/tokens",
+            json={"email": self.username, "password": self.password},
         )
-        response = r.json()
+        token_response.raise_for_status()
+        response = token_response.json()
+        return response["token"]
 
-        self.token = response["token"]
+    def get_headers(self):
+        return {"Authorization": f"Bearer {self.token}", "Content-Type": "text/turtle"}
 
-    def post(self, resource_type: str, metadata: "Graph") -> None:
-        hdr = {"Authorization": f"Bearer {self.token}", "Content-Type": "text/turtle"}
-        response = requests.post(
-            f"{self.endpoint}/{resource_type}", data=metadata.serialize(), headers=hdr
-        )
-
-        if response.status_code != 201:
-            raise Exception(response.text)
+    def post_serialised(self, resource_type: str, metadata: "Graph") -> None:
+        path = f"{self.base_url}/{resource_type}"
+        response = self.post(path=path, data=metadata.serialize())

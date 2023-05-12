@@ -3,7 +3,7 @@ from rdflib import DCAT, DCTERMS, FOAF, RDF, BNode, Graph, Literal, URIRef
 
 from cedar.client import CedarClient
 from core.logger import get_logger
-from fdp import Client as FDPClient
+from fdp.client import FDPClient
 
 logger = get_logger()
 
@@ -11,13 +11,17 @@ logger = get_logger()
 def post_cedar_instance_to_fdp(
     cedar_client: CedarClient, template_id: str, config: dict
 ) -> None:
-    client = FDPClient("https://health-ri.sandbox.semlab-leiden.nl")
-    client.login(config["fdp"]["username"], config["fdp"]["password"])
+    fdp_base_url = config["fdp"]["base_url"]
+    fdp_client = FDPClient(
+        base_url=fdp_base_url,
+        username=config["fdp"]["username"],
+        password=config["fdp"]["password"],
+    )
 
-    count = 0
+    cedar_template_instances = cedar_client.search_instances(template_id)
 
-    for resource in cedar_client.search_instances(template_id):
-        logger.info(f"{count}: {resource}")
+    for index, resource in enumerate(cedar_template_instances):
+        logger.info(f"{index}: {resource}")
         tpl_instance = cedar_client.get_template_instance(resource)
         foo = Graph().parse(data=tpl_instance, format="json-ld")
 
@@ -26,11 +30,9 @@ def post_cedar_instance_to_fdp(
         # FIXME FDP expects a rdf:type
         foo.add((s, RDF.type, DCAT.Resource))
         # FIXME FDP expects a parent link
-        foo.add(
-            (s, DCTERMS.isPartOf, URIRef("https://health-ri.sandbox.semlab-leiden.nl"))
-        )
+        foo.add((s, DCTERMS.isPartOf, URIRef(fdp_base_url)))
         # FIXME dcat:Resource expects a dct:title
-        foo.add((s, DCTERMS.title, Literal(f"Test {count} (hardcoded title value)")))
+        foo.add((s, DCTERMS.title, Literal(f"Test {index} (hardcoded title value)")))
         # FIXME dcat:Resource expects a dct:publisher
         p = BNode()
         foo.add((p, RDF.type, FOAF.Agent))
@@ -40,11 +42,9 @@ def post_cedar_instance_to_fdp(
         foo.add((s, DCTERMS.hasVersion, Literal(1)))
 
         try:
-            client.post(resource_type="project-admin", metadata=foo)
-        except:
-            logger.error(f"  failed {resource}")
-
-        count += 1
+            fdp_client.post_serialised(resource_type="project-admin", metadata=foo)
+        except SystemExit:
+            logger.error(f"Failed to upload resource: {resource}")
 
 
 if __name__ == "__main__":
