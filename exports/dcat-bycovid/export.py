@@ -1,12 +1,16 @@
-from typing import List, Tuple
+from pathlib import Path
+from typing import List, Tuple, Union
 
 import yaml
 from rdflib import DCAT, DCTERMS, RDF, Graph, URIRef
+from rdflib.term import Node
 
 from cedar.client import CedarClient
 from core.logger import get_logger
 
 logger = get_logger()
+
+ROOT_DIR = Path(__file__).parents[2]
 
 ADMIN_TEMPLATE_MAPPING = {
     "http://purl.org/dc/terms/title": (
@@ -37,12 +41,13 @@ CONTENT_TEMPLATE_MAPPING = {
 
 
 def get_object_recursively(
-    mapping: Tuple, parent_subject: URIRef, g: Graph, obj_list: List
+    mapping: Tuple, parent_subject: Union[URIRef, Node], graph: Graph, obj_list: List
 ) -> List:
+    """Recursively walks over a graph along a tuple of predicates and saves terminal leaves to a list"""
     for index, predicate_chain_node in enumerate(mapping):
-        child_nodes = [
-            x for x in g.triples((parent_subject, URIRef(predicate_chain_node), None))
-        ]
+        child_nodes = list(
+            graph.triples((parent_subject, URIRef(predicate_chain_node), None))
+        )
         for node in child_nodes:
             (child_subject, child_predicate, child_object) = node
             if predicate_chain_node == mapping[-1]:
@@ -51,28 +56,46 @@ def get_object_recursively(
                 get_object_recursively(
                     mapping=mapping[index + 1 : :],
                     parent_subject=child_object,
-                    g=g,
+                    graph=graph,
                     obj_list=obj_list,
                 )
     return obj_list
 
 
-def do_stuff(mapping_table: dict, subject: URIRef, g: Graph, export: Graph) -> None:
+def find_target_predicate_chain_values(
+    mapping_table: dict, subj: URIRef, graph: Graph, export_graph: Graph
+) -> None:
+    """Maps target predicate and resource predicate chain values"""
     for target_predicate, mapping in mapping_table.items():
-        temp_subject = subject
+        temp_subject = subj
         obj_list = []
-        result = get_object_recursively(mapping, temp_subject, g, obj_list)
+        result = get_object_recursively(mapping, temp_subject, graph, obj_list)
 
-        if result is None:
-            raise Exception(
+        if not result:
+            raise LookupError(
                 f"Could not find target value for predicate chain {mapping}"
             )
         for node in result:
-            export.add((s, URIRef(target_predicate), node))
+            export_graph.add((subj, URIRef(target_predicate), node))
 
 
-if __name__ == "__main__":
-    config = yaml.safe_load(open("../../config.yml", "r"))
+def build_export_graph(subj: URIRef, resource: str) -> Graph:
+    # load resource (template instance)
+    source_graph = Graph().parse(data=resource, format="json-ld")
+    subject = URIRef(subj)
+    export_graph = Graph()
+    export_graph.bind("dcterms", DCTERMS)
+    export_graph.bind("dcat", DCAT)
+    export_graph.add((subject, RDF.type, DCAT.Dataset))
+    # find triples based on mapping
+    find_target_predicate_chain_values(
+        ADMIN_TEMPLATE_MAPPING, subject, source_graph, export_graph
+    )
+    return export_graph
+
+
+def main():
+    config = yaml.safe_load(open(Path(ROOT_DIR, "config.yml"), "r"))
     client = CedarClient(api_key=config["cedar"]["apikey"])
 
     admin_template = (
@@ -110,15 +133,10 @@ if __name__ == "__main__":
     subject = "https://repo.metadatacenter.org/template-instances/f0c065e2-10e3-4b3d-aca1-c4a9be0dce93"
     resource = client.get_template_instance(subject)
 
-    # load resource (template instance)
-    g = Graph().parse(data=resource, format="json-ld")
-    s = URIRef(subject)
-    export = Graph()
-    export.bind("dcterms", DCTERMS)
-    export.bind("dcat", DCAT)
-    export.add((s, RDF.type, DCAT.Dataset))
-
-    # find triples based on mapping
-    do_stuff(ADMIN_TEMPLATE_MAPPING, s, g, export)
+    export = build_export_graph(URIRef(subject), resource)
 
     logger.info(export.serialize())
+
+
+if __name__ == "__main__":
+    main()

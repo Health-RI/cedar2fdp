@@ -25,6 +25,7 @@ class BasicAPIClient:
         if method.upper() not in ["GET", "POST", "PUT", "DELETE"]:
             raise ValueError(f"Unsupported method {method}")
         url = urljoin(self.base_url, path)
+        response = None
         try:
             response = self.session.request(
                 method, url, params=params, data=data, verify=self.ssl_verification
@@ -33,6 +34,8 @@ class BasicAPIClient:
             return response
         except requests.exceptions.HTTPError as e:
             logger.error(e)
+            if response is not None:
+                logger.error(response.text)
             sys.exit(1)
         except requests.exceptions.ConnectionError as e:
             logger.error(e)
