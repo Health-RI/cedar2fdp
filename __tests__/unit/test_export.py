@@ -23,7 +23,6 @@ def get_template_by_id(*args, **kwargs):
 @pytest.mark.parametrize("cont_template_id", ["908e33e2-9485-4a93-ab22-1688dc5819dc"])
 @patch("cedar.client.CedarClient")
 def test_write_catalog(cedar_client, cont_template_id):
-    print(ROOT_DIR)
     # Set up
     cont_template_path = Path(INPUT_DIR, f"response_{cont_template_id}.json")
     with open(cont_template_path, "r") as templ_file:
