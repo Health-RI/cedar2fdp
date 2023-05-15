@@ -57,7 +57,13 @@ def get_object_recursively(
     return obj_list
 
 
-def do_stuff(mapping_table: dict, source_subject: URIRef, target_subject:URIRef, g: Graph, export: Graph) -> None:
+def do_stuff(
+    mapping_table: dict,
+    source_subject: URIRef,
+    target_subject: URIRef,
+    g: Graph,
+    export: Graph,
+) -> None:
     for target_predicate, mapping in mapping_table.items():
         obj_list = []
         result = get_object_recursively(mapping, source_subject, g, obj_list)
@@ -69,7 +75,10 @@ def do_stuff(mapping_table: dict, source_subject: URIRef, target_subject:URIRef,
         for node in result:
             export.add((target_subject, URIRef(target_predicate), node))
 
-def write_catalogs(client: CedarClient, export: Graph, admin_to_content_mapping: dict) -> dict:
+
+def write_catalogs(
+    client: CedarClient, export: Graph, admin_to_content_mapping: dict
+) -> dict:
     content_template_id = "908e33e2-9485-4a93-ab22-1688dc5819dc"
 
     focus_area_mapping = (
@@ -90,36 +99,50 @@ def write_catalogs(client: CedarClient, export: Graph, admin_to_content_mapping:
         graph = Graph().parse(data=content_instance, format="json-ld")
 
         obj_list = []
-        get_object_recursively(mapping=focus_area_mapping, parent_subject=URIRef(content_instance_id), g=graph, obj_list=obj_list)
+        get_object_recursively(
+            mapping=focus_area_mapping,
+            parent_subject=URIRef(content_instance_id),
+            g=graph,
+            obj_list=obj_list,
+        )
 
         if len(obj_list) != 1:
-            raise Exception(f"catalog {content_instance_id} contains more than 1 focus area")
+            raise Exception(
+                f"catalog {content_instance_id} contains more than 1 focus area"
+            )
         focus_area = obj_list[0]
 
         if focus_area not in catalogs:
             catalogs[focus_area] = {
                 "content_instances": [],
-                "label": graph.value(subject=URIRef(focus_area), predicate=RDFS.label)
+                "label": graph.value(subject=URIRef(focus_area), predicate=RDFS.label),
             }
         catalogs[focus_area]["content_instances"].append(content_instance_id)
 
         x_list = []
-        get_object_recursively(mapping=admin_template_mapping, parent_subject=URIRef(content_instance_id), g=graph, obj_list=x_list)
+        get_object_recursively(
+            mapping=admin_template_mapping,
+            parent_subject=URIRef(content_instance_id),
+            g=graph,
+            obj_list=x_list,
+        )
         if len(x_list) == 0:
-            logger.warning(f"content template instance {content_instance_id} does not contain a link to its admin template instance")
+            logger.warning(
+                f"content template instance {content_instance_id} does not contain a link to its admin template instance"
+            )
             continue
         admin_template_id = x_list[0]
 
         admin_to_content_mapping[f"{admin_template_id}"] = content_instance_id
 
-    # bind namespaces in case they're not bound yet
+    # bind namespaces in case they are not bound yet
     export.bind("dcat", DCAT)
     export.bind("dcterms", DCTERMS)
 
     resulting_catalog_mapping = {}
 
     count = 0
-    for k,v in catalogs.items():
+    for k, v in catalogs.items():
         s = URIRef(f"http://example.com/catalog/{count}")
 
         count += 1
@@ -133,7 +156,13 @@ def write_catalogs(client: CedarClient, export: Graph, admin_to_content_mapping:
 
     return resulting_catalog_mapping
 
-def write_datasets(client: CedarClient, export: Graph, content_to_catalog_mapping: dict, admin_to_content_mapping: dict) -> None:
+
+def write_datasets(
+    client: CedarClient,
+    export: Graph,
+    content_to_catalog_mapping: dict,
+    admin_to_content_mapping: dict,
+) -> None:
     admin_template_id = "337cb6f3-eef6-4b2f-9ffb-3f6d6cc9b9ac"
 
     count = 0
@@ -146,7 +175,13 @@ def write_datasets(client: CedarClient, export: Graph, content_to_catalog_mappin
         count += 1
 
         export.add((s, RDF.type, DCAT.Dataset))
-        do_stuff(mapping_table=ADMIN_TEMPLATE_MAPPING, source_subject=URIRef(admin_instance_id), target_subject=s, g=graph, export=export)
+        do_stuff(
+            mapping_table=ADMIN_TEMPLATE_MAPPING,
+            source_subject=URIRef(admin_instance_id),
+            target_subject=s,
+            g=graph,
+            export=export,
+        )
 
         if admin_instance_id in admin_to_content_mapping:
             content_id = admin_to_content_mapping[admin_instance_id]
@@ -155,18 +190,30 @@ def write_datasets(client: CedarClient, export: Graph, content_to_catalog_mappin
                 catalog_id = content_to_catalog_mapping[content_id]
                 export.add((catalog_id, DCAT.dataset, s))
             else:
-                logger.warning(f"content instance id {content_id} was not mapped to a catalog")
+                logger.warning(
+                    f"content instance id {content_id} was not mapped to a catalog"
+                )
         else:
-            logger.warning(f"admin instance id {admin_instance_id} was not mapped to a content instance")
+            logger.warning(
+                f"admin instance id {admin_instance_id} was not mapped to a content instance"
+            )
+
 
 if __name__ == "__main__":
-    config = yaml.safe_load(open("../../config.yml", "r"))
+    config = yaml.safe_load(open("../config.yml", "r"))
     client = CedarClient(api_key=config["cedar"]["apikey"])
 
     ex = Graph()
     admin_to_content_mapping = {}
-    catalog_mapping = write_catalogs(client=client, export=ex, admin_to_content_mapping=admin_to_content_mapping)
-    write_datasets(client=client, export=ex, content_to_catalog_mapping=catalog_mapping, admin_to_content_mapping=admin_to_content_mapping)
+    catalog_mapping = write_catalogs(
+        client=client, export=ex, admin_to_content_mapping=admin_to_content_mapping
+    )
+    write_datasets(
+        client=client,
+        export=ex,
+        content_to_catalog_mapping=catalog_mapping,
+        admin_to_content_mapping=admin_to_content_mapping,
+    )
     print(ex.serialize())
 
     admin_template = (
@@ -213,6 +260,8 @@ if __name__ == "__main__":
     export.add((s, RDF.type, DCAT.Dataset))
 
     # find triples based on mapping
-    do_stuff(ADMIN_TEMPLATE_MAPPING, source_subject=s, target_subject=s, g=g, export=export)
+    do_stuff(
+        ADMIN_TEMPLATE_MAPPING, source_subject=s, target_subject=s, g=g, export=export
+    )
 
     logger.info(export.serialize())
