@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import List, Tuple, Union
 
 import yaml
@@ -9,8 +8,6 @@ from cedar.client import CedarClient
 from core.logger import get_logger
 
 logger = get_logger()
-
-ROOT_DIR = Path(__file__).parents[2]
 
 ADMIN_TEMPLATE_MAPPING = {
     "http://purl.org/dc/terms/title": (
@@ -38,6 +35,32 @@ CONTENT_TEMPLATE_MAPPING = {
         "https://schema.metadatacenter.org/properties/fe7e40b0-8c55-4221-bc82-399e80d19846",
     ),
 }
+ADMIN_TEMPLATE = (
+    "https://repo.metadatacenter.org/templates/337cb6f3-eef6-4b2f-9ffb-3f6d6cc9b9ac",
+)
+CONTENT_TEMPLATE = (
+    "https://repo.metadatacenter.org/templates/908e33e2-9485-4a93-ab22-1688dc5819dc",
+)
+CATALOG_TEMPLATE = (
+    "https://repo.metadatacenter.org/templates/28d58a30-1a42-4715-a742-d2f46690563e",
+)
+DATASET_TEMPLATE = (
+    "https://repo.metadatacenter.org/templates/de169781-7f75-4aef-a0cb-ac435fe3a4c7",
+)
+DIST_TEMPLATE = (
+    "https://repo.metadatacenter.org/templates/22925909-9fb2-4ac8-a986-6db5ae7049e7",
+)
+
+FOCUS_AREA_MAPPING = (
+    "https://schema.metadatacenter.org/properties/7cb60a0c-4931-454a-8fca-1fd3faa8462f",
+    "https://schema.metadatacenter.org/properties/40a3e466-85b3-429e-bf27-ccb31bf3c667",
+    "https://schema.metadatacenter.org/properties/d6df6cc7-9902-430f-910f-096ae895e3fe",
+)
+CATALOG_TO_ADMIN_MAPPING = (
+    "https://schema.metadatacenter.org/properties/bf746fc0-2d59-476a-b630-6d704e1a8caf",
+    "https://schema.metadatacenter.org/properties/d9ff53e9-7762-4b0b-a466-c750148b3baa",
+    "https://schema.metadatacenter.org/properties/7e519671-cb71-4bb9-8540-49989f5ca3db",
+)
 
 
 def get_object_recursively(
@@ -84,18 +107,7 @@ def find_target_predicate_chain_values(
 def write_catalogs(
     client: CedarClient, export: Graph, admin_to_content_mapping: dict
 ) -> dict:
-    content_template_id = "908e33e2-9485-4a93-ab22-1688dc5819dc"
-
-    focus_area_mapping = (
-        "https://schema.metadatacenter.org/properties/7cb60a0c-4931-454a-8fca-1fd3faa8462f",
-        "https://schema.metadatacenter.org/properties/40a3e466-85b3-429e-bf27-ccb31bf3c667",
-        "https://schema.metadatacenter.org/properties/d6df6cc7-9902-430f-910f-096ae895e3fe",
-    )
-    admin_template_mapping = (
-        "https://schema.metadatacenter.org/properties/bf746fc0-2d59-476a-b630-6d704e1a8caf",
-        "https://schema.metadatacenter.org/properties/d9ff53e9-7762-4b0b-a466-c750148b3baa",
-        "https://schema.metadatacenter.org/properties/7e519671-cb71-4bb9-8540-49989f5ca3db",
-    )
+    content_template_id = CONTENT_TEMPLATE[0].rsplit("/", maxsplit=1)[-1]
 
     catalogs = {}
 
@@ -105,7 +117,7 @@ def write_catalogs(
 
         obj_list = []
         get_object_recursively(
-            mapping=focus_area_mapping,
+            mapping=FOCUS_AREA_MAPPING,
             parent_subject=URIRef(content_instance_id),
             graph=graph,
             obj_list=obj_list,
@@ -126,7 +138,7 @@ def write_catalogs(
 
         x_list = []
         get_object_recursively(
-            mapping=admin_template_mapping,
+            mapping=CATALOG_TO_ADMIN_MAPPING,
             parent_subject=URIRef(content_instance_id),
             graph=graph,
             obj_list=x_list,
@@ -143,17 +155,17 @@ def write_catalogs(
     resulting_catalog_mapping = {}
 
     count = 0
-    for k, v in catalogs.items():
-        s = URIRef(f"http://example.com/catalog/{count}")
+    for key, value in catalogs.items():
+        subject = URIRef(f"http://example.com/catalog/{count}")
 
         count += 1
 
-        export.add((s, RDF.type, DCAT.Catalog))
-        export.add((s, DCTERMS.title, v["label"]))
-        export.add((s, DCAT.theme, URIRef(k)))
+        export.add((subject, RDF.type, DCAT.Catalog))
+        export.add((subject, DCTERMS.title, value["label"]))
+        export.add((subject, DCAT.theme, URIRef(key)))
 
-        for content_instance_id in v["content_instances"]:
-            resulting_catalog_mapping[content_instance_id] = s
+        for content_instance_id in value["content_instances"]:
+            resulting_catalog_mapping[content_instance_id] = subject
 
     return resulting_catalog_mapping
 
@@ -172,13 +184,13 @@ def write_datasets(
         admin_instance = client.get_template_instance(admin_instance_id)
         graph = Graph().parse(data=admin_instance, format="json-ld")
 
-        s = URIRef(f"http://example.com/dataset/{index}")
+        subject = URIRef(f"http://example.com/dataset/{index}")
 
-        export.add((s, RDF.type, DCAT.Dataset))
+        export.add((subject, RDF.type, DCAT.Dataset))
         find_target_predicate_chain_values(
             mapping_table=ADMIN_TEMPLATE_MAPPING,
             source_subject=URIRef(admin_instance_id),
-            target_subject=s,
+            target_subject=subject,
             graph=graph,
             export=export,
         )
@@ -188,7 +200,7 @@ def write_datasets(
 
             if content_id in content_to_catalog_mapping:
                 catalog_id = content_to_catalog_mapping[content_id]
-                export.add((catalog_id, DCAT.dataset, s))
+                export.add((catalog_id, DCAT.dataset, subject))
             else:
                 logger.warning(
                     f"content instance id {content_id} was not mapped to a catalog"
@@ -219,24 +231,12 @@ def build_export_graph(client):
     return export_graph
 
 
-if __name__ == "__main__":
+def export_dcat():
     config = yaml.safe_load(open("../config.yml", "r"))
     client = CedarClient(api_key=config["cedar"]["apikey"])
     export = build_export_graph(client=client)
     print(export.serialize())
 
-    admin_template = (
-        "https://repo.metadatacenter.org/templates/337cb6f3-eef6-4b2f-9ffb-3f6d6cc9b9ac"
-    )
-    content_template = (
-        "https://repo.metadatacenter.org/templates/908e33e2-9485-4a93-ab22-1688dc5819dc"
-    )
-    catalog_template = (
-        "https://repo.metadatacenter.org/templates/28d58a30-1a42-4715-a742-d2f46690563e"
-    )
-    dataset_template = (
-        "https://repo.metadatacenter.org/templates/de169781-7f75-4aef-a0cb-ac435fe3a4c7"
-    )
-    dist_template = (
-        "https://repo.metadatacenter.org/templates/22925909-9fb2-4ac8-a986-6db5ae7049e7"
-    )
+
+if __name__ == "__main__":
+    export_dcat()
