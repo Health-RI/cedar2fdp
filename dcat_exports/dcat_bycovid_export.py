@@ -1,12 +1,16 @@
-from typing import List, Tuple
+from pathlib import Path
+from typing import List, Tuple, Union
 
 import yaml
 from rdflib import DCAT, DCTERMS, RDF, RDFS, Graph, URIRef
+from rdflib.term import Node
 
 from cedar.client import CedarClient
 from core.logger import get_logger
 
 logger = get_logger()
+
+ROOT_DIR = Path(__file__).parents[2]
 
 ADMIN_TEMPLATE_MAPPING = {
     "http://purl.org/dc/terms/title": (
@@ -37,12 +41,13 @@ CONTENT_TEMPLATE_MAPPING = {
 
 
 def get_object_recursively(
-    mapping: Tuple, parent_subject: URIRef, g: Graph, obj_list: List
+    mapping: Tuple, parent_subject: Union[URIRef, Node], graph: Graph, obj_list: List
 ) -> List:
+    """Recursively walks over a graph along a tuple of predicates and saves terminal leaves to a list"""
     for index, predicate_chain_node in enumerate(mapping):
-        child_nodes = [
-            x for x in g.triples((parent_subject, URIRef(predicate_chain_node), None))
-        ]
+        child_nodes = list(
+            graph.triples((parent_subject, URIRef(predicate_chain_node), None))
+        )
         for node in child_nodes:
             (child_subject, child_predicate, child_object) = node
             if predicate_chain_node == mapping[-1]:
@@ -51,22 +56,22 @@ def get_object_recursively(
                 get_object_recursively(
                     mapping=mapping[index + 1 : :],
                     parent_subject=child_object,
-                    g=g,
+                    graph=graph,
                     obj_list=obj_list,
                 )
     return obj_list
 
 
-def do_stuff(
+def find_target_predicate_chain_values(
     mapping_table: dict,
     source_subject: URIRef,
     target_subject: URIRef,
-    g: Graph,
+    graph: Graph,
     export: Graph,
 ) -> None:
     for target_predicate, mapping in mapping_table.items():
         obj_list = []
-        result = get_object_recursively(mapping, source_subject, g, obj_list)
+        result = get_object_recursively(mapping, source_subject, graph, obj_list)
 
         if result is None:
             raise Exception(
@@ -102,7 +107,7 @@ def write_catalogs(
         get_object_recursively(
             mapping=focus_area_mapping,
             parent_subject=URIRef(content_instance_id),
-            g=graph,
+            graph=graph,
             obj_list=obj_list,
         )
 
@@ -123,7 +128,7 @@ def write_catalogs(
         get_object_recursively(
             mapping=admin_template_mapping,
             parent_subject=URIRef(content_instance_id),
-            g=graph,
+            graph=graph,
             obj_list=x_list,
         )
         if len(x_list) == 0:
@@ -134,10 +139,6 @@ def write_catalogs(
         admin_template_id = x_list[0]
 
         admin_to_content_mapping[f"{admin_template_id}"] = content_instance_id
-
-    # bind namespaces in case they are not bound yet
-    export.bind("dcat", DCAT)
-    export.bind("dcterms", DCTERMS)
 
     resulting_catalog_mapping = {}
 
@@ -165,21 +166,20 @@ def write_datasets(
 ) -> None:
     admin_template_id = "337cb6f3-eef6-4b2f-9ffb-3f6d6cc9b9ac"
 
-    count = 0
-
-    for admin_instance_id in client.search_instances(admin_template_id):
+    for index, admin_instance_id in enumerate(
+        client.search_instances(admin_template_id)
+    ):
         admin_instance = client.get_template_instance(admin_instance_id)
         graph = Graph().parse(data=admin_instance, format="json-ld")
 
-        s = URIRef(f"http://example.com/dataset/{count}")
-        count += 1
+        s = URIRef(f"http://example.com/dataset/{index}")
 
         export.add((s, RDF.type, DCAT.Dataset))
-        do_stuff(
+        find_target_predicate_chain_values(
             mapping_table=ADMIN_TEMPLATE_MAPPING,
             source_subject=URIRef(admin_instance_id),
             target_subject=s,
-            g=graph,
+            graph=graph,
             export=export,
         )
 
@@ -199,22 +199,31 @@ def write_datasets(
             )
 
 
-if __name__ == "__main__":
-    config = yaml.safe_load(open("../config.yml", "r"))
-    client = CedarClient(api_key=config["cedar"]["apikey"])
-
-    ex = Graph()
+def build_export_graph(client):
+    export_graph = Graph()
+    # bind namespaces in case they are not bound yet
+    export_graph.bind("dcat", DCAT)
+    export_graph.bind("dcterms", DCTERMS)
     admin_to_content_mapping = {}
     catalog_mapping = write_catalogs(
-        client=client, export=ex, admin_to_content_mapping=admin_to_content_mapping
+        client=client,
+        export=export_graph,
+        admin_to_content_mapping=admin_to_content_mapping,
     )
     write_datasets(
         client=client,
-        export=ex,
+        export=export_graph,
         content_to_catalog_mapping=catalog_mapping,
         admin_to_content_mapping=admin_to_content_mapping,
     )
-    print(ex.serialize())
+    return export_graph
+
+
+if __name__ == "__main__":
+    config = yaml.safe_load(open("../config.yml", "r"))
+    client = CedarClient(api_key=config["cedar"]["apikey"])
+    export = build_export_graph(client=client)
+    print(export.serialize())
 
     admin_template = (
         "https://repo.metadatacenter.org/templates/337cb6f3-eef6-4b2f-9ffb-3f6d6cc9b9ac"
@@ -231,37 +240,3 @@ if __name__ == "__main__":
     dist_template = (
         "https://repo.metadatacenter.org/templates/22925909-9fb2-4ac8-a986-6db5ae7049e7"
     )
-
-    adm_instances = {}
-
-    # for adm_instance_id in client.search_instances(admin_template[-36:]):
-    #     adm_instances[adm_instance_id] = Graph().parse(data=client.get_template_instance(adm_instance_id),
-    #     format="json-ld")
-    #
-    # content_instances = {}
-    # for content_instance_id in client.search_instances(content_template[-36:]):
-    #     content_instances[content_instance_id] = Graph().parse(data=client.get_template_instance(content_instance_id),
-    #     format="json-ld")
-    #
-    # print(f"found {len(adm_instances)} admin instances")
-    # print(f"found {len(content_instances)} content instances")
-
-    # test multiple instance: f0c065e2-10e3-4b3d-aca1-c4a9be0dce93
-    # covid portal instance: 5994ae62-4163-4a92-b7b5-98e669d4a743
-    subject = "https://repo.metadatacenter.org/template-instances/f0c065e2-10e3-4b3d-aca1-c4a9be0dce93"
-    resource = client.get_template_instance(subject)
-
-    # load resource (template instance)
-    g = Graph().parse(data=resource, format="json-ld")
-    s = URIRef(subject)
-    export = Graph()
-    export.bind("dcterms", DCTERMS)
-    export.bind("dcat", DCAT)
-    export.add((s, RDF.type, DCAT.Dataset))
-
-    # find triples based on mapping
-    do_stuff(
-        ADMIN_TEMPLATE_MAPPING, source_subject=s, target_subject=s, g=g, export=export
-    )
-
-    logger.info(export.serialize())
