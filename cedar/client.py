@@ -31,13 +31,14 @@ class CedarClient(BasicAPIClient):
         return Template(src=response.json())
 
     def get_template_instance(self, template_instance_id: str) -> str:
+        """Gets template instance as json-ld string"""
         url = (
             template_instance_id
             if template_instance_id.startswith("https://")
             else f"{CedarEndPoints.template_instances}/{template_instance_id}"
         )
         response = self.get(path=url)
-        return response.text  # defaults to json-ld
+        return response.text
 
     def search_instances(self, template_id: str) -> List[str]:
         """Searches template instances belonging to a template with certain id
