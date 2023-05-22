@@ -5,7 +5,8 @@ from rdflib import DCAT, DCTERMS, RDF, RDFS, Graph, URIRef
 
 from cedar.client import CedarClient
 from core.logger import get_logger
-from dcat_exports.export_utils import get_object_recursively, update_language
+from dcat_exports.cedar_source_data import CedarAdminInstance
+from dcat_exports.export_utils import get_object_recursively
 from models.bycovid_models import DCATDataSet
 
 logger = get_logger()
@@ -151,8 +152,10 @@ def get_links_to_admin(content_instance_id, graph):
     return admin_template_id
 
 
-def write_catalogs(client: CedarClient, admin_to_content_mapping: dict) -> dict:
-    """For each instance of content template searches for focus area"""
+def map_content_to_focus_area(
+    client: CedarClient, admin_to_content_mapping: dict
+) -> dict:
+    """For each instance of Content Template searches for focus area"""
     content_template_id = CONTENT_TEMPLATE[0].rsplit("/", maxsplit=1)[-1]
 
     catalogs = OrderedDict()
@@ -195,6 +198,18 @@ def get_catalog_id(
     return catalog_id
 
 
+def export_admin_data_to_dataset(admin_instance, subject):
+    title = admin_instance.get_title(
+        ADMIN_TEMPLATE_MAPPING["http://purl.org/dc/terms/title"],
+        language_predicate=ADMIN_TEMPLATE_MAPPING["language"][-1],
+    )
+    creator = admin_instance.get_attribute(
+        ADMIN_TEMPLATE_MAPPING["http://purl.org/dc/terms/creator"]
+    )
+    dataset = DCATDataSet(uri=subject, title=title, creator=creator).to_graph()
+    return dataset
+
+
 def write_datasets(
     client: CedarClient,
     export: Graph,
@@ -206,48 +221,31 @@ def write_datasets(
     for index, admin_instance_id in enumerate(
         client.search_instances(admin_template_id)
     ):
-        admin_instance = client.get_template_instance(admin_instance_id)
-        graph = Graph().parse(
-            data=admin_instance, format="json-ld", publicID="https://orcid.org"
-        )
-
+        admin_instance = CedarAdminInstance(admin_instance_id, client)
+        # admin_instance = client.get_template_instance(admin_instance_id)
+        # graph = Graph().parse(
+        #     data=admin_instance, format="json-ld", publicID="https://orcid.org"
+        # )
+        #
         subject = URIRef(f"http://example.com/dataset/{index}")
         # start = datetime.now()
 
-        export.add((subject, RDF.type, DCAT.Dataset))
+        # export.add((subject, RDF.type, DCAT.Dataset))
         # query source
-        # dataset = query_dataset(graph=graph)
+        # dataset = query_dataset(graph=admin_instance.graph_data)
         # #
         # for s, p, o in dataset.graph:
         #     export.add((subject, p, o))
         # or find the same values recursively
         #
 
-        title = get_object_recursively(
-            ADMIN_TEMPLATE_MAPPING["http://purl.org/dc/terms/title"],
-            URIRef(admin_instance_id),
-            graph,
-            ADMIN_TEMPLATE_MAPPING["language"][-1],
-        )
-
-        creator = get_object_recursively(
-            ADMIN_TEMPLATE_MAPPING["http://purl.org/dc/terms/creator"],
-            URIRef(admin_instance_id),
-            graph,
-        )
-
-        full_title = [
-            update_language(title_tuple, admin_instance_id) for title_tuple in title
-        ]
-        dataset = DCATDataSet(
-            uri=subject, title=full_title, creator=[record[0] for record in creator]
-        ).to_graph()
+        dataset = export_admin_data_to_dataset(admin_instance, subject)
         export += dataset
         # find_target_predicate_chain_values(
         #     mapping_table=ADMIN_TEMPLATE_MAPPING,
         #     source_subject=URIRef(admin_instance_id),
         #     target_subject=subject,
-        #     graph=graph,
+        #     graph=admin_instance.graph_data,
         #     export=export,
         # )
         # end = datetime.now()
@@ -277,7 +275,7 @@ def build_export_graph(client):
     export_graph.bind("dcat", DCAT)
     export_graph.bind("dcterms", DCTERMS)
     admin_to_content_mapping = {}
-    catalogs = write_catalogs(
+    catalogs = map_content_to_focus_area(
         client=client,
         admin_to_content_mapping=admin_to_content_mapping,
     )

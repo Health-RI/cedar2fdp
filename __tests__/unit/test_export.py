@@ -1,11 +1,15 @@
 import json
+from collections import OrderedDict
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-from rdflib import Graph, URIRef
+from rdflib import Literal, URIRef
 
-from dcat_exports.dcat_bycovid_export import write_catalogs
+from dcat_exports.dcat_bycovid_export import (
+    get_resulting_catalog_mapping,
+    map_content_to_focus_area,
+)
 
 ROOT_DIR = Path(__file__).parents[2]
 INPUT_DIR = Path(ROOT_DIR, "./example-input")
@@ -20,6 +24,13 @@ def get_template_by_id(*args, **kwargs):
     return template_json_ld
 
 
+def fix_expected_datatypes(value):
+    value["label"] = Literal(
+        value["label"], datatype=URIRef("http://www.w3.org/2001/XMLSchema#string")
+    )
+    return value
+
+
 @pytest.mark.parametrize("cont_template_id", ["908e33e2-9485-4a93-ab22-1688dc5819dc"])
 @patch("cedar.client.CedarClient")
 def test_write_catalog(cedar_client, cont_template_id):
@@ -32,18 +43,43 @@ def test_write_catalog(cedar_client, cont_template_id):
         resource["@id"] for resource in cont_template["resources"]
     ]
     cedar_client.get_template_instance.side_effect = get_template_by_id
-    expected_path = Path(OUTPUT_DIR, f"catalog_{cont_template_id}.json")
+    expected_path = Path(OUTPUT_DIR, f"focus_areas_{cont_template_id}.json")
     # Act
     with open(expected_path, "r") as dict_file:
         expected_dict = json.loads(dict_file.read())
-    expected_dict = {key: URIRef(value) for key, value in expected_dict.items()}
 
-    ex = Graph()
+    expected_dict = OrderedDict(
+        {
+            URIRef(key): fix_expected_datatypes(value)
+            for key, value in expected_dict.items()
+        }
+    )
+
     admin_to_content_mapping = {}
-    actual_dict = write_catalogs(
+    actual_dict = map_content_to_focus_area(
         client=cedar_client,
-        export=ex,
         admin_to_content_mapping=admin_to_content_mapping,
     )
+    # Assert
+    assert actual_dict == expected_dict
+
+
+@pytest.mark.parametrize("cont_template_id", ["908e33e2-9485-4a93-ab22-1688dc5819dc"])
+def test_get_resulting_catalog_mapping(cont_template_id):
+    # Set up
+    expected_path = Path(OUTPUT_DIR, f"catalog_{cont_template_id}.json")
+    catalogs_path = Path(OUTPUT_DIR, f"focus_areas_{cont_template_id}.json")
+    with open(catalogs_path, "r") as catalogs_file:
+        catalogs = json.loads(catalogs_file.read())
+    catalogs = OrderedDict(
+        {URIRef(key): fix_expected_datatypes(value) for key, value in catalogs.items()}
+    )
+
+    with open(expected_path, "r") as dict_file:
+        expected_dict = json.loads(dict_file.read())
+    expected_dict = {key: URIRef(value) for key, value in expected_dict.items()}
+    # Act
+    actual_dict = get_resulting_catalog_mapping(catalogs)
+
     # Assert
     assert actual_dict == expected_dict
