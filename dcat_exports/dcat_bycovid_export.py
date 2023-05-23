@@ -1,4 +1,5 @@
 from collections import OrderedDict
+from datetime import datetime
 
 import yaml
 from rdflib import DCAT, DCTERMS, RDF, RDFS, Graph, URIRef
@@ -28,6 +29,20 @@ ADMIN_TEMPLATE_MAPPING = {
         "https://schema.metadatacenter.org/properties/9e8b66fb-3f8c-4edc-b2d6-099d398b0bfc",
         "https://schema.metadatacenter.org/properties/a48e48af-7e98-4174-9d1d-5a7b7cf0b788",
         "http://def.isotc211.org/iso19115/2003/IdentificationInformation#MD_DataIdentification.language",
+    ),
+    # ("http://purl.org/dc/terms/temporal", "http://purl.org/dc/terms/PeriodOfTime",
+    # "http://www.w3.org/ns/dcat#startDate")
+    "start": (
+        "https://schema.metadatacenter.org/properties/792cb92d-dd83-4b0c-b0ba-6392913c9b09",
+        "https://schema.metadatacenter.org/properties/44d6b2d1-24fa-4ee2-85ff-c9bc8565bddc",
+        "https://schema.metadatacenter.org/properties/bbca9d8b-a95d-4239-a259-fb40164e5715",
+    ),
+    # ("http://purl.org/dc/terms/temporal", "http://purl.org/dc/terms/PeriodOfTime",
+    # "http://www.w3.org/ns/dcat#endDate")
+    "end": (
+        "https://schema.metadatacenter.org/properties/792cb92d-dd83-4b0c-b0ba-6392913c9b09",
+        "https://schema.metadatacenter.org/properties/44d6b2d1-24fa-4ee2-85ff-c9bc8565bddc",
+        "https://schema.metadatacenter.org/properties/e6ba0001-590d-4400-a296-683dee6bf72a",
     ),
 }
 CONTENT_TEMPLATE_MAPPING = {
@@ -206,7 +221,21 @@ def export_admin_data_to_dataset(admin_instance, subject):
     creator = admin_instance.get_attribute(
         ADMIN_TEMPLATE_MAPPING["http://purl.org/dc/terms/creator"]
     )
-    dataset = DCATDataSet(uri=subject, title=title, creator=creator).to_graph()
+    dates = admin_instance.get_pared_attributes(
+        ADMIN_TEMPLATE_MAPPING["start"], ADMIN_TEMPLATE_MAPPING["end"][-1]
+    )
+    if not dates:
+        start_date, end_date = None, None
+    else:
+        start_date, end_date = dates[0]
+
+    dataset = DCATDataSet(
+        uri=subject,
+        title=title,
+        creator=creator,
+        start_date=start_date,
+        end_date=end_date,
+    ).to_graph()
     return dataset
 
 
@@ -306,8 +335,9 @@ def export_dcat():
     # covid portal instance: 5994ae62-4163-4a92-b7b5-98e669d4a743
     # query_sparql(client, template_id="65cf949f-96e3-4310-ad5b-965002683835")
     export = build_export_graph(client=client)
-    # with open(f"../example-output/{datetime.now().date()}_output.ttl", "w") as f:
-    #     f.write(export.serialize())
+    export.serialize(
+        destination=f"../example-output/{datetime.now().date()}_output.ttl"
+    )
     print(export.serialize())
 
 

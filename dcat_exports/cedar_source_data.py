@@ -1,6 +1,8 @@
 """
 
 """
+from typing import Tuple
+
 from rdflib import Graph, URIRef
 
 from dcat_exports.export_utils import get_object_recursively, update_language
@@ -18,9 +20,7 @@ class CedarAdminInstance:
         )
 
     def get_title(self, mapping, language_predicate):
-        title = get_object_recursively(
-            mapping, URIRef(self.admin_instance_id), self.graph_data, language_predicate
-        )
+        title = self.get_pared_attributes(mapping, language_predicate)
         full_title = [
             update_language(title_tuple, self.admin_instance_id)
             for title_tuple in title
@@ -34,3 +34,12 @@ class CedarAdminInstance:
         if attribute:
             attribute = [record[0] for record in attribute]
         return attribute
+
+    def get_pared_attributes(self, first_attribute_mapping: Tuple, second_mapping: str):
+        data = get_object_recursively(
+            first_attribute_mapping,
+            URIRef(self.admin_instance_id),
+            self.graph_data,
+            second_mapping,
+        )
+        return data
