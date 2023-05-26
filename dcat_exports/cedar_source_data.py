@@ -14,7 +14,7 @@ class CedarAdminInstance:
         self.graph_data = self.get_and_parse_instance(client)
 
     def get_and_parse_instance(self, client):
-        admin_instance = client.get_template_instance(self.admin_instance_id)
+        admin_instance = client.get_template_instance_jsonld(self.admin_instance_id)
         return Graph().parse(
             data=admin_instance, format="json-ld", publicID="https://orcid.org"
         )

@@ -1,8 +1,11 @@
+import re
 from collections import OrderedDict
 from datetime import datetime
 
+import pandas as pd
 import yaml
 from rdflib import DCAT, DCTERMS, RDF, RDFS, Graph, URIRef
+from rdflib.term import BNode, Literal
 
 from cedar.client import CedarClient
 from core.logger import get_logger
@@ -29,6 +32,11 @@ ADMIN_TEMPLATE_MAPPING = {
         "https://schema.metadatacenter.org/properties/9e8b66fb-3f8c-4edc-b2d6-099d398b0bfc",
         "https://schema.metadatacenter.org/properties/a48e48af-7e98-4174-9d1d-5a7b7cf0b788",
         "http://def.isotc211.org/iso19115/2003/IdentificationInformation#MD_DataIdentification.language",
+    ),
+    "http://www.w3.org/ns/dcat#contactPoint": (
+        "https://schema.metadatacenter.org/properties/83257c93-74ba-484b-bae7-8395ca8057a3",
+        "https://schema.metadatacenter.org/properties/49cd19d7-5543-4ff5-9861-20e74ce7cfaa",
+        "https://schema.metadatacenter.org/properties/ae358774-2e66-40e3-8856-d6d373a180f5",
     ),
     # ("http://purl.org/dc/terms/temporal", "http://purl.org/dc/terms/PeriodOfTime",
     # "http://www.w3.org/ns/dcat#startDate")
@@ -58,6 +66,18 @@ CONTENT_TEMPLATE_MAPPING = {
         "https://schema.metadatacenter.org/properties/fe7e40b0-8c55-4221-bc82-399e80d19846",
     ),
 }
+
+DIST_MAPPING = {
+    # "datasetDate": ("http://purl.org/dc/terms/issued"),
+    "http://purl.org/dc/terms/format": ("http://purl.org/dc/terms/conformsTo",),
+    # "distributionMediaType": "http://www.w3.org/ns/dcat#mediaType",
+    # "title": "http://purl.org/dc/terms/title",
+    # "accessService": "http://www.w3.org/ns/dcat#accessService",
+    "http://purl.org/dc/terms/description": ("http://purl.org/dc/terms/description",),
+    "http://purl.org/dc/terms/license": ("http://purl.org/dc/terms/license",),
+    "http://www.w3.org/ns/dcat#accessURL": ("http://www.w3.org/ns/dcat#accessURL",),
+}
+
 ADMIN_TEMPLATE = (
     "https://repo.metadatacenter.org/templates/337cb6f3-eef6-4b2f-9ffb-3f6d6cc9b9ac",
 )
@@ -83,6 +103,16 @@ CATALOG_TO_ADMIN_MAPPING = (
     "https://schema.metadatacenter.org/properties/bf746fc0-2d59-476a-b630-6d704e1a8caf",
     "https://schema.metadatacenter.org/properties/d9ff53e9-7762-4b0b-a466-c750148b3baa",
     "https://schema.metadatacenter.org/properties/7e519671-cb71-4bb9-8540-49989f5ca3db",
+)
+
+# (0000-000(?:1-[5-9]|2-[0-9]|3-[0-4])\d{3}-\d{3}[\dX]?)|(0009-00[0-1](?:[0-9]-[0-9])\d{3}-\d{3}[\dX]?)
+
+
+# ORCID iDs are typically the 16-digit identifiers are assigned between 0000-0001-5000-0007 and 0000-0003-5000-0001,
+# or between 0009-0000-0000-0000 and 0009-0010-0000-0000. "X" can be at the end.
+ORCID_PATTERN = re.compile(
+    "^https?:\/\/orcid\.org\/((0000-000(?:1-[5-9]|2-[0-9]|3-[0-4])\d{3}-\d{3}[\dX]?)|(0009-00[0-1](?:[0-9]-[0-9])\d{"
+    "3}-\d{3}[\dX]?))"
 )
 
 
@@ -168,31 +198,95 @@ def get_links_to_admin(content_instance_id, graph):
 
 
 def map_content_to_focus_area(
-    client: CedarClient, admin_to_content_mapping: dict
+    client: CedarClient, admin_to_content_mapping: dict, td
 ) -> dict:
     """For each instance of Content Template searches for focus area"""
     content_template_id = CONTENT_TEMPLATE[0].rsplit("/", maxsplit=1)[-1]
 
     catalogs = OrderedDict()
-
+    # for index, admin_instance_id in enumerate(
+    #     client.search_instances(content_template_id)
+    # ):
+    #     t = client.get_template_json(admin_instance_id)
+    #     print(t["@id"])
+    #     if t["@id"] in td["related_content_id"].values:
+    #         pass
+    w = []
     for content_instance_id in client.search_instances(content_template_id):
-        content_instance = client.get_template_instance(content_instance_id)
+        if content_instance_id in [
+            "https://repo.metadatacenter.org/template-instances/28350645-507f-404d-a9cb-e0b646d129bd",
+            "https://repo.metadatacenter.org/template-instances/0c06df81-70fd-427f-b894-55830bb172f5",
+            "https://repo.metadatacenter.org/template-instances/1e636018-2806-4807-b781-5835d5435b1f",
+            "https://repo.metadatacenter.org/template-instances/db1d53d4-3ec0-4a5b-901e-3fe7d33214ec",
+            "https://repo.metadatacenter.org/template-instances/3e270d85-a989-46da-a67c-eddc89e96c8f",
+        ]:
+            pass
+
+        content_templ_json = client.get_template_instance(content_instance_id).json()
+
+        content_instance = client.get_template_instance_jsonld(content_instance_id)
         graph = Graph().parse(data=content_instance, format="json-ld")
 
         focus_area = get_focus_area(content_instance_id, graph)
+
+        content_dict = {"content_instance_id": content_instance_id}
+        content_dict["keyword"] = []
+        content_dict["theme"] = []
 
         if focus_area not in catalogs:
             catalogs[focus_area] = {
                 "content_instances": [],
                 "label": graph.value(subject=URIRef(focus_area), predicate=RDFS.label),
             }
+        scope = content_templ_json["Scope"]
+        for item in scope["Area Level"]:
+            al = item["Area Level"]
+            if al:
+                area_level_theme = al.get("@id")
+                area_level_keyword = al.get("@value")
+                content_dict["keyword"].append(area_level_keyword)
+                content_dict["theme"].append(area_level_theme)
+
+        for item in scope["Care Setting"]:
+            cs = item["Care Setting"]
+            if cs:
+                area_level_theme = cs.get("@id")
+                area_level_keyword = cs.get("@value")
+                content_dict["keyword"].append(area_level_keyword)
+                content_dict["theme"].append(area_level_theme)
+
+        for item in scope["Population Group"]:
+            pg = item["Population Group"]
+            if pg:
+                area_level_theme, area_level_keyword = pg.values()
+                content_dict["keyword"].append(area_level_keyword)
+                content_dict["theme"].append(area_level_theme)
+            key_w = item["Other Population Group"].get("@value")
+            if key_w:
+                content_dict["keyword"].append(key_w)
+
+        if graph.value(subject=URIRef(focus_area), predicate=RDFS.label) == Literal(
+            "other", datatype=URIRef("http://www.w3.org/2001/XMLSchema#string")
+        ):
+            other_fa = content_templ_json["Scope"]["Focus Area"][
+                "Other Focus Area"
+            ].get("@value")
+            if other_fa is not None:
+                content_dict["keyword"].append(other_fa)
+        content_dict["focus_area"] = graph.value(
+            subject=URIRef(focus_area), predicate=RDFS.label
+        )
         catalogs[focus_area]["content_instances"].append(content_instance_id)
 
         admin_template_id = get_links_to_admin(content_instance_id, graph)
         if admin_template_id is not None:
+            content_dict["admin_instance_id"] = admin_template_id
+            w.append(content_dict)
             admin_to_content_mapping[f"{admin_template_id}"] = content_instance_id
+    w_df = pd.DataFrame(data=w)
+    td = pd.merge(td, w_df, how="outer", on="content_instance_id")
 
-    return catalogs
+    return catalogs, td
 
 
 def get_catalog_id(
@@ -221,6 +315,14 @@ def export_admin_data_to_dataset(admin_instance, subject):
     creator = admin_instance.get_attribute(
         ADMIN_TEMPLATE_MAPPING["http://purl.org/dc/terms/creator"]
     )
+    for creator_item in creator:
+        if not ORCID_PATTERN.fullmatch(creator_item) and not isinstance(
+            creator_item, BNode
+        ):
+            logger.error(
+                f"Unexpected creator value: {creator_item}, Admin Template Id: {admin_instance.admin_instance_id}"
+            )
+
     dates = admin_instance.get_pared_attributes(
         ADMIN_TEMPLATE_MAPPING["start"], ADMIN_TEMPLATE_MAPPING["end"][-1]
     )
@@ -228,6 +330,9 @@ def export_admin_data_to_dataset(admin_instance, subject):
         start_date, end_date = None, None
     else:
         start_date, end_date = dates[0]
+    primary_contact = admin_instance.get_attribute(
+        ADMIN_TEMPLATE_MAPPING["http://www.w3.org/ns/dcat#contactPoint"]
+    )
 
     dataset = DCATDataSet(
         uri=subject,
@@ -235,6 +340,7 @@ def export_admin_data_to_dataset(admin_instance, subject):
         creator=creator,
         start_date=start_date,
         end_date=end_date,
+        contact_point=primary_contact,
     ).to_graph()
     return dataset
 
@@ -244,6 +350,7 @@ def write_datasets(
     export: Graph,
     content_to_catalog_mapping: dict,
     admin_to_content_mapping: dict,
+    map_table: pd.DataFrame,
 ) -> None:
     admin_template_id = ADMIN_TEMPLATE[0].rsplit("/", maxsplit=1)[-1]
 
@@ -269,6 +376,34 @@ def write_datasets(
         #
 
         dataset = export_admin_data_to_dataset(admin_instance, subject)
+
+        ds_table = map_table.loc[
+            map_table["admin_instance_id"] == Literal(admin_instance.admin_instance_id)
+        ][["description", "publisher", "keyword", "theme"]]
+        if not ds_table.empty:
+            if ds_table.shape[0] > 1:
+                print("too many rows!!!!!")
+            s = ds_table.to_dict("records")[0]
+            descr = s["description"]
+            if pd.notnull(descr):
+                dataset.add((subject, DCTERMS.description, Literal(descr)))
+            publ = s["publisher"]
+            if pd.notnull(publ):
+                dataset.add((subject, DCTERMS.publisher, URIRef(publ)))
+            kw = s["keyword"]
+            if kw:
+                keywords = [i for i in kw if pd.notnull(i)]
+                for k in keywords:
+                    dataset.add((subject, DCAT.keyword, Literal(k)))
+            themes = s["theme"]
+            if themes:
+                th = [i for i in themes if pd.notnull(i)]
+                for t in th:
+                    dataset.add((subject, DCAT.theme, URIRef(t)))
+
+        # for title in self.title:
+        #     graph.add((subject, DCTERMS.title, title))
+
         export += dataset
         # find_target_predicate_chain_values(
         #     mapping_table=ADMIN_TEMPLATE_MAPPING,
@@ -298,15 +433,100 @@ def get_resulting_catalog_mapping(catalogs):
     return resulting_catalog_mapping
 
 
+def write_dist(client, export):
+    template_id = DIST_TEMPLATE[0].rsplit("/", maxsplit=1)[-1]
+    for index, instance_id in enumerate(client.search_instances(template_id)):
+        dist_instance = client.get_template_instance_jsonld(instance_id)
+        dist_graph = Graph().parse(data=dist_instance, format="json-ld")
+        subject = URIRef(f"http://example.com/distribution/{index}")
+        export.add((subject, RDF.type, DCAT.Distribution))
+        find_target_predicate_chain_values(
+            mapping_table=DIST_MAPPING,
+            source_subject=URIRef(instance_id),
+            target_subject=subject,
+            graph=dist_graph,
+            export=export,
+        )
+
+
 def build_export_graph(client):
     export_graph = Graph()
     # bind namespaces
     export_graph.bind("dcat", DCAT)
     export_graph.bind("dcterms", DCTERMS)
+
+    template_id = CATALOG_TEMPLATE[0].rsplit("/", maxsplit=1)[-1]
+    catalog_temp_instances = []
+    for index, instance_id in enumerate(client.search_instances(template_id)):
+        dist_instance = client.get_template_instance(instance_id).json()
+        project_id_field_name = "ProjectContentIntanceID"
+        project_id = dist_instance.get(project_id_field_name)
+        if project_id is None or isinstance(project_id, dict):
+            project_id_field_name = "projectIdentifier"
+        description = dist_instance["catalogDescription"].get("@value")
+        datasets = [ds.get("@id") for ds in dist_instance["datasetIdentifier"]]
+        for d in datasets:
+            if d is not None and not d.startswith("https://repo.metadatacenter.org"):
+                logger.warning(
+                    f"Unexpected dataset link: {d}, Catalog ID {instance_id}"
+                )
+        instance_dict = {
+            "catalog_instance_id": dist_instance["@id"],
+            "content_instance_id": dist_instance[project_id_field_name][0]["@id"],
+            "description": description,
+            "publisher": dist_instance["publisher"].get("@id"),
+            "dataset_id": datasets,
+        }
+        catalog_temp_instances.append(instance_dict)
+
+        if description is None or description == "":
+            logger.error(f"Empty catalog description: {instance_id}")
+
+    catalog_temp_instances_df = pd.DataFrame(data=catalog_temp_instances).explode(
+        "dataset_id"
+    )
+
+    linked_dist = []
+    for ds_id in catalog_temp_instances_df["dataset_id"].values:
+        if ds_id is not None and ds_id.startswith("https://repo.metadatacenter.org"):
+            dataset_json = client.get_template_instance(ds_id).json()
+            field_name = "DistributionMetadataInstanceID"
+            distr = dataset_json.get(field_name)
+            if distr is None:
+                field_name = "datasetDistributionIdentifier"
+                distr = dataset_json.get(field_name)
+            #'DistributionMetadataInstanceID' "datasetDistributionIdentifier"
+            distributions = [dist["@id"] for dist in distr]
+            linked_dist += distributions
+        # else:
+        #     logger.warning(f"Unexpected dataset link: {ds_id}, Catalog ID {}")
+    ds_t = DATASET_TEMPLATE[0].rsplit("/", maxsplit=1)[-1]
+    datasets_via_api = client.search_instances(ds_t)
+    missing_ds = [
+        d
+        for d in catalog_temp_instances_df["dataset_id"].unique()
+        if d is not None and d.startswith("https://repo.metadatacenter.org")
+    ]
+    if missing_ds:
+        new_line = "\n"
+        logger.warning(
+            f"Following datasets are not referenced from a catalog: {f',{new_line}'.join(missing_ds)}"
+        )
+
+    template_id = DIST_TEMPLATE[0].rsplit("/", maxsplit=1)[-1]
+    all_dist = client.search_instances(template_id)
+    missed = [i for i in all_dist if i not in linked_dist]
+    if missed:
+        new_line = "\n"
+        logger.warning(
+            f"Following distributions are not referenced from a catalog: {f',{new_line}'.join(missed)}"
+        )
+
     admin_to_content_mapping = {}
-    catalogs = map_content_to_focus_area(
+    catalogs, cross_template_mapping = map_content_to_focus_area(
         client=client,
         admin_to_content_mapping=admin_to_content_mapping,
+        td=catalog_temp_instances_df,
     )
     resulting_catalog_mapping = get_resulting_catalog_mapping(catalogs=catalogs)
 
@@ -324,7 +544,14 @@ def build_export_graph(client):
         export=export_graph,
         content_to_catalog_mapping=resulting_catalog_mapping,
         admin_to_content_mapping=admin_to_content_mapping,
+        map_table=cross_template_mapping,
     )
+
+    write_dist(
+        client=client,
+        export=export_graph,
+    )
+
     return export_graph
 
 

@@ -2,6 +2,7 @@ from typing import Iterator, List
 
 from rdflib import BNode, Graph, Literal, Namespace, URIRef
 from rdflib.namespace import RDF, RDFS
+from requests import Response
 
 from core.api_client import BasicAPIClient
 
@@ -30,15 +31,20 @@ class CedarClient(BasicAPIClient):
         response = self.get(path=path)
         return Template(src=response.json())
 
-    def get_template_instance(self, template_instance_id: str) -> str:
+    def get_template_instance_jsonld(self, template_instance_id: str) -> str:
         """Gets template instance as json-ld string"""
+        response = self.get_template_instance(template_instance_id)
+        return response.text
+
+    def get_template_instance(self, template_instance_id: str) -> Response:
+        """Gets template instance as Response"""
         url = (
             template_instance_id
             if template_instance_id.startswith("https://")
             else f"{CedarEndPoints.template_instances}/{template_instance_id}"
         )
         response = self.get(path=url)
-        return response.text
+        return response
 
     def search_instances(self, template_id: str) -> List[str]:
         """Searches template instances belonging to a template with certain id

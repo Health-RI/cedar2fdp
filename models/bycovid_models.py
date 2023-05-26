@@ -14,6 +14,7 @@ class DCATDataSet(BaseModel):
     creator: List[URIRef]
     start_date: Optional[Literal]
     end_date: Optional[Literal]
+    contact_point: List[URIRef]
 
     def to_graph(self) -> Graph:
         """Converts class instance to dcat dataset graph"""
@@ -33,6 +34,8 @@ class DCATDataSet(BaseModel):
             graph.add((subject, DCTERMS.title, title))
         for creator in self.creator:
             graph.add((subject, DCTERMS.creator, creator))
+        for contact in self.contact_point:
+            graph.add((subject, DCAT.contactPoint, contact))
         # add date node
         date_node = BNode()
         graph.add((subject, DCTERMS.temporal, date_node))
