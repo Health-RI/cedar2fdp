@@ -13,10 +13,10 @@ def color_diff(line):
 
 
 def compare_files():
-    with open("../../example-output/output-verified/output.ttl", "r") as file_1:
+    with open("../../example-output/2023-05-26_output_latest.ttl", "r") as file_1:
         file_1_text = file_1.readlines()
 
-    with open("../../example-output/output.ttl", "r") as file_2:
+    with open("../../example-output/2023-05-26_output.ttl", "r") as file_2:
         file_2_text = file_2.readlines()
 
     diff = difflib.unified_diff(
@@ -33,3 +33,7 @@ def compare_files():
         for line in diff:
             print(color_diff(line))
     return files_different
+
+
+if __name__ == "__main__":
+    print(compare_files())

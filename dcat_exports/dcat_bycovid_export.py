@@ -10,6 +10,11 @@ from rdflib.term import BNode, Literal
 from cedar.client import CedarClient
 from core.logger import get_logger
 from dcat_exports.cedar_source_data import CedarAdminInstance
+from dcat_exports.export_controller import (
+    CedarConfig,
+    CedarFieldError,
+    ExportController,
+)
 from dcat_exports.export_utils import get_object_recursively
 from models.bycovid_models import DCATDataSet
 
@@ -84,15 +89,11 @@ ADMIN_TEMPLATE = (
 CONTENT_TEMPLATE = (
     "https://repo.metadatacenter.org/templates/908e33e2-9485-4a93-ab22-1688dc5819dc",
 )
-CATALOG_TEMPLATE = (
-    "https://repo.metadatacenter.org/templates/28d58a30-1a42-4715-a742-d2f46690563e",
-)
+CATALOG_TEMPLATE = "28d58a30-1a42-4715-a742-d2f46690563e"
 DATASET_TEMPLATE = (
     "https://repo.metadatacenter.org/templates/de169781-7f75-4aef-a0cb-ac435fe3a4c7",
 )
-DIST_TEMPLATE = (
-    "https://repo.metadatacenter.org/templates/22925909-9fb2-4ac8-a986-6db5ae7049e7",
-)
+DISTRIBUTION_TEMPLATE = "22925909-9fb2-4ac8-a986-6db5ae7049e7"
 
 FOCUS_AREA_MAPPING = (
     "https://schema.metadatacenter.org/properties/7cb60a0c-4931-454a-8fca-1fd3faa8462f",
@@ -105,6 +106,15 @@ CATALOG_TO_ADMIN_MAPPING = (
     "https://schema.metadatacenter.org/properties/7e519671-cb71-4bb9-8540-49989f5ca3db",
 )
 
+
+class ByCovidConfig(metaclass=CedarConfig):
+    admin_templ_id = "337cb6f3-eef6-4b2f-9ffb-3f6d6cc9b9ac"
+    catalog_templ_id = "28d58a30-1a42-4715-a742-d2f46690563e"
+    content_templ_id = "908e33e2-9485-4a93-ab22-1688dc5819dc"
+    dataset_templ_id = "de169781-7f75-4aef-a0cb-ac435fe3a4c7"
+    distribution_templ_id = "22925909-9fb2-4ac8-a986-6db5ae7049e7"
+
+
 # (0000-000(?:1-[5-9]|2-[0-9]|3-[0-4])\d{3}-\d{3}[\dX]?)|(0009-00[0-1](?:[0-9]-[0-9])\d{3}-\d{3}[\dX]?)
 
 
@@ -114,10 +124,6 @@ ORCID_PATTERN = re.compile(
     "^https?:\/\/orcid\.org\/((0000-000(?:1-[5-9]|2-[0-9]|3-[0-4])\d{3}-\d{3}[\dX]?)|(0009-00[0-1](?:[0-9]-[0-9])\d{"
     "3}-\d{3}[\dX]?))"
 )
-
-
-class CedarFieldError(Exception):
-    pass
 
 
 def find_target_predicate_chain_values(
@@ -201,26 +207,12 @@ def map_content_to_focus_area(
     client: CedarClient, admin_to_content_mapping: dict, td
 ) -> dict:
     """For each instance of Content Template searches for focus area"""
+    start = datetime.now()
     content_template_id = CONTENT_TEMPLATE[0].rsplit("/", maxsplit=1)[-1]
 
     catalogs = OrderedDict()
-    # for index, admin_instance_id in enumerate(
-    #     client.search_instances(content_template_id)
-    # ):
-    #     t = client.get_template_json(admin_instance_id)
-    #     print(t["@id"])
-    #     if t["@id"] in td["related_content_id"].values:
-    #         pass
-    w = []
+
     for content_instance_id in client.search_instances(content_template_id):
-        if content_instance_id in [
-            "https://repo.metadatacenter.org/template-instances/28350645-507f-404d-a9cb-e0b646d129bd",
-            "https://repo.metadatacenter.org/template-instances/0c06df81-70fd-427f-b894-55830bb172f5",
-            "https://repo.metadatacenter.org/template-instances/1e636018-2806-4807-b781-5835d5435b1f",
-            "https://repo.metadatacenter.org/template-instances/db1d53d4-3ec0-4a5b-901e-3fe7d33214ec",
-            "https://repo.metadatacenter.org/template-instances/3e270d85-a989-46da-a67c-eddc89e96c8f",
-        ]:
-            pass
 
         content_templ_json = client.get_template_instance(content_instance_id).json()
 
@@ -229,64 +221,22 @@ def map_content_to_focus_area(
 
         focus_area = get_focus_area(content_instance_id, graph)
 
-        content_dict = {"content_instance_id": content_instance_id}
-        content_dict["keyword"] = []
-        content_dict["theme"] = []
-
         if focus_area not in catalogs:
             catalogs[focus_area] = {
                 "content_instances": [],
                 "label": graph.value(subject=URIRef(focus_area), predicate=RDFS.label),
             }
-        scope = content_templ_json["Scope"]
-        for item in scope["Area Level"]:
-            al = item["Area Level"]
-            if al:
-                area_level_theme = al.get("@id")
-                area_level_keyword = al.get("@value")
-                content_dict["keyword"].append(area_level_keyword)
-                content_dict["theme"].append(area_level_theme)
 
-        for item in scope["Care Setting"]:
-            cs = item["Care Setting"]
-            if cs:
-                area_level_theme = cs.get("@id")
-                area_level_keyword = cs.get("@value")
-                content_dict["keyword"].append(area_level_keyword)
-                content_dict["theme"].append(area_level_theme)
-
-        for item in scope["Population Group"]:
-            pg = item["Population Group"]
-            if pg:
-                area_level_theme, area_level_keyword = pg.values()
-                content_dict["keyword"].append(area_level_keyword)
-                content_dict["theme"].append(area_level_theme)
-            key_w = item["Other Population Group"].get("@value")
-            if key_w:
-                content_dict["keyword"].append(key_w)
-
-        if graph.value(subject=URIRef(focus_area), predicate=RDFS.label) == Literal(
-            "other", datatype=URIRef("http://www.w3.org/2001/XMLSchema#string")
-        ):
-            other_fa = content_templ_json["Scope"]["Focus Area"][
-                "Other Focus Area"
-            ].get("@value")
-            if other_fa is not None:
-                content_dict["keyword"].append(other_fa)
-        content_dict["focus_area"] = graph.value(
-            subject=URIRef(focus_area), predicate=RDFS.label
-        )
         catalogs[focus_area]["content_instances"].append(content_instance_id)
 
         admin_template_id = get_links_to_admin(content_instance_id, graph)
         if admin_template_id is not None:
-            content_dict["admin_instance_id"] = admin_template_id
-            w.append(content_dict)
             admin_to_content_mapping[f"{admin_template_id}"] = content_instance_id
-    w_df = pd.DataFrame(data=w)
-    td = pd.merge(td, w_df, how="outer", on="content_instance_id")
 
-    return catalogs, td
+    stop = datetime.now()
+    logger.info(f"Second: {stop - start}")
+
+    return catalogs
 
 
 def get_catalog_id(
@@ -378,8 +328,8 @@ def write_datasets(
         dataset = export_admin_data_to_dataset(admin_instance, subject)
 
         ds_table = map_table.loc[
-            map_table["admin_instance_id"] == Literal(admin_instance.admin_instance_id)
-        ][["description", "publisher", "keyword", "theme"]]
+            map_table["admin_instance_id"] == admin_instance.admin_instance_id
+        ][["description", "publisher", "keyword", "theme", "content_graph_id"]]
         if not ds_table.empty:
             if ds_table.shape[0] > 1:
                 print("too many rows!!!!!")
@@ -415,11 +365,15 @@ def write_datasets(
         # end = datetime.now()
         # print(end - start)
 
-        catalog_id = get_catalog_id(
-            admin_instance_id, admin_to_content_mapping, content_to_catalog_mapping
-        )
-        if catalog_id is not None:
-            export.add((catalog_id, DCAT.dataset, subject))
+        catalog_id_df = ds_table["content_graph_id"]
+        if not catalog_id_df.empty:
+            catalog_id = URIRef(catalog_id_df.values[0])
+
+            # catalog_id = get_catalog_id(
+            #     admin_instance_id, admin_to_content_mapping, content_to_catalog_mapping
+            # )
+            if pd.notnull(catalog_id):
+                export.add((catalog_id, DCAT.dataset, subject))
 
 
 def get_resulting_catalog_mapping(catalogs):
@@ -434,8 +388,7 @@ def get_resulting_catalog_mapping(catalogs):
 
 
 def write_dist(client, export):
-    template_id = DIST_TEMPLATE[0].rsplit("/", maxsplit=1)[-1]
-    for index, instance_id in enumerate(client.search_instances(template_id)):
+    for index, instance_id in enumerate(client.search_instances(DISTRIBUTION_TEMPLATE)):
         dist_instance = client.get_template_instance_jsonld(instance_id)
         dist_graph = Graph().parse(data=dist_instance, format="json-ld")
         subject = URIRef(f"http://example.com/distribution/{index}")
@@ -455,96 +408,69 @@ def build_export_graph(client):
     export_graph.bind("dcat", DCAT)
     export_graph.bind("dcterms", DCTERMS)
 
-    template_id = CATALOG_TEMPLATE[0].rsplit("/", maxsplit=1)[-1]
-    catalog_temp_instances = []
-    for index, instance_id in enumerate(client.search_instances(template_id)):
-        dist_instance = client.get_template_instance(instance_id).json()
-        project_id_field_name = "ProjectContentIntanceID"
-        project_id = dist_instance.get(project_id_field_name)
-        if project_id is None or isinstance(project_id, dict):
-            project_id_field_name = "projectIdentifier"
-        description = dist_instance["catalogDescription"].get("@value")
-        datasets = [ds.get("@id") for ds in dist_instance["datasetIdentifier"]]
-        for d in datasets:
-            if d is not None and not d.startswith("https://repo.metadatacenter.org"):
-                logger.warning(
-                    f"Unexpected dataset link: {d}, Catalog ID {instance_id}"
-                )
-        instance_dict = {
-            "catalog_instance_id": dist_instance["@id"],
-            "content_instance_id": dist_instance[project_id_field_name][0]["@id"],
-            "description": description,
-            "publisher": dist_instance["publisher"].get("@id"),
-            "dataset_id": datasets,
-        }
-        catalog_temp_instances.append(instance_dict)
-
-        if description is None or description == "":
-            logger.error(f"Empty catalog description: {instance_id}")
-
-    catalog_temp_instances_df = pd.DataFrame(data=catalog_temp_instances).explode(
-        "dataset_id"
-    )
-
-    linked_dist = []
-    for ds_id in catalog_temp_instances_df["dataset_id"].values:
-        if ds_id is not None and ds_id.startswith("https://repo.metadatacenter.org"):
-            dataset_json = client.get_template_instance(ds_id).json()
-            field_name = "DistributionMetadataInstanceID"
-            distr = dataset_json.get(field_name)
-            if distr is None:
-                field_name = "datasetDistributionIdentifier"
-                distr = dataset_json.get(field_name)
-            #'DistributionMetadataInstanceID' "datasetDistributionIdentifier"
-            distributions = [dist["@id"] for dist in distr]
-            linked_dist += distributions
-        # else:
-        #     logger.warning(f"Unexpected dataset link: {ds_id}, Catalog ID {}")
-    ds_t = DATASET_TEMPLATE[0].rsplit("/", maxsplit=1)[-1]
-    datasets_via_api = client.search_instances(ds_t)
-    missing_ds = [
-        d
-        for d in catalog_temp_instances_df["dataset_id"].unique()
-        if d is not None and d.startswith("https://repo.metadatacenter.org")
-    ]
-    if missing_ds:
-        new_line = "\n"
-        logger.warning(
-            f"Following datasets are not referenced from a catalog: {f',{new_line}'.join(missing_ds)}"
-        )
-
-    template_id = DIST_TEMPLATE[0].rsplit("/", maxsplit=1)[-1]
-    all_dist = client.search_instances(template_id)
-    missed = [i for i in all_dist if i not in linked_dist]
-    if missed:
-        new_line = "\n"
-        logger.warning(
-            f"Following distributions are not referenced from a catalog: {f',{new_line}'.join(missed)}"
-        )
+    cedar_export = ExportController(client, ByCovidConfig)
+    cedar_export.overall_mapping = cedar_export.get_catalogs_data()
+    cedar_export.merge_datasets_distributions_ids()
+    cedar_export.overall_mapping = cedar_export.merge_content_data()
 
     admin_to_content_mapping = {}
-    catalogs, cross_template_mapping = map_content_to_focus_area(
+    catalogs = map_content_to_focus_area(
         client=client,
         admin_to_content_mapping=admin_to_content_mapping,
-        td=catalog_temp_instances_df,
+        td=cedar_export.overall_mapping,
     )
     resulting_catalog_mapping = get_resulting_catalog_mapping(catalogs=catalogs)
 
-    catalogs_dict_view_list = list(catalogs.items())
-    for item in catalogs_dict_view_list:
-        subject = URIRef(
-            f"http://example.com/catalog/{catalogs_dict_view_list.index(item)}"
-        )
+    cedar_export.overall_mapping[
+        "content_graph_id"
+    ] = cedar_export.overall_mapping.groupby("focus_area_id", dropna=True).ngroup()
+    cedar_export.overall_mapping["content_graph_id"] = cedar_export.overall_mapping[
+        "content_graph_id"
+    ].apply(
+        lambda x: f"http://example.com/catalog/{str(int(x))}" if pd.notnull(x) else x
+    )
+    # catalog_df = cedar_export.overall_mapping.copy()
+    # catalog_df = catalog_df[["focus_area_id", "focus_area", "@id"]].drop_duplicates().dropna()
+    # catalog_df["@id"] = catalog_df["@id"].apply(lambda x: f"http://example.com/catalog/{str(int(x))}")
+    # catalog_df = catalog_df.set_index("@id")
+    # catalog_df.rename(columns={"focus_area_id": DCAT.theme, "focus_area": DCTERMS.title}, inplace=True)
+
+    # namespace_manager = NamespaceManager(Graph())
+    # namespace_manager.bind("dcat", DCAT)
+    # namespace_manager.bind("dcterms", DCTERMS)
+    #
+    # g = rdfpandas.to_graph(catalog_df, namespace_manager)
+
+    # catalogs_dict_view_list = list(catalogs.items())
+    df = (
+        cedar_export.overall_mapping.copy()[
+            ["content_graph_id", "focus_area", "focus_area_id"]
+        ]
+        .dropna()
+        .drop_duplicates()
+    )
+    content_items = df.to_dict("records")
+    for item in content_items:
+        subject = URIRef(item["content_graph_id"])
         export_graph.add((subject, RDF.type, DCAT.Catalog))
-        export_graph.add((subject, DCTERMS.title, item[1]["label"]))
-        export_graph.add((subject, DCAT.theme, URIRef(item[0])))
+        export_graph.add(
+            (
+                subject,
+                DCTERMS.title,
+                Literal(
+                    item["focus_area"],
+                    datatype="http://www.w3.org/2001/XMLSchema#string",
+                ),
+            )
+        )
+        export_graph.add((subject, DCAT.theme, URIRef(item["focus_area_id"])))
 
     write_datasets(
         client=client,
         export=export_graph,
         content_to_catalog_mapping=resulting_catalog_mapping,
         admin_to_content_mapping=admin_to_content_mapping,
-        map_table=cross_template_mapping,
+        map_table=cedar_export.overall_mapping,
     )
 
     write_dist(
@@ -558,9 +484,6 @@ def build_export_graph(client):
 def export_dcat():
     config = yaml.safe_load(open("../config.yml", "r"))
     client = CedarClient(api_key=config["cedar"]["apikey"])
-    # test multiple instance: f0c065e2-10e3-4b3d-aca1-c4a9be0dce93
-    # covid portal instance: 5994ae62-4163-4a92-b7b5-98e669d4a743
-    # query_sparql(client, template_id="65cf949f-96e3-4310-ad5b-965002683835")
     export = build_export_graph(client=client)
     export.serialize(
         destination=f"../example-output/{datetime.now().date()}_output.ttl"
