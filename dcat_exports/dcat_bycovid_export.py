@@ -298,8 +298,6 @@ def export_admin_data_to_dataset(admin_instance, subject):
 def write_datasets(
     client: CedarClient,
     export: Graph,
-    content_to_catalog_mapping: dict,
-    admin_to_content_mapping: dict,
     map_table: pd.DataFrame,
 ) -> None:
     admin_template_id = ADMIN_TEMPLATE[0].rsplit("/", maxsplit=1)[-1]
@@ -413,17 +411,11 @@ def build_export_graph(client):
     cedar_export.merge_datasets_distributions_ids()
     cedar_export.overall_mapping = cedar_export.merge_content_data()
 
-    admin_to_content_mapping = {}
-    catalogs = map_content_to_focus_area(
-        client=client,
-        admin_to_content_mapping=admin_to_content_mapping,
-        td=cedar_export.overall_mapping,
-    )
-    resulting_catalog_mapping = get_resulting_catalog_mapping(catalogs=catalogs)
-
     cedar_export.overall_mapping[
         "content_graph_id"
-    ] = cedar_export.overall_mapping.groupby("focus_area_id", dropna=True).ngroup()
+    ] = cedar_export.overall_mapping.groupby(
+        ["focus_area_id", "focus_area"], dropna=True
+    ).ngroup()
     cedar_export.overall_mapping["content_graph_id"] = cedar_export.overall_mapping[
         "content_graph_id"
     ].apply(
@@ -468,8 +460,6 @@ def build_export_graph(client):
     write_datasets(
         client=client,
         export=export_graph,
-        content_to_catalog_mapping=resulting_catalog_mapping,
-        admin_to_content_mapping=admin_to_content_mapping,
         map_table=cedar_export.overall_mapping,
     )
 
