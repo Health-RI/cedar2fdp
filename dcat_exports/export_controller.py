@@ -1,5 +1,4 @@
 from abc import ABCMeta
-from datetime import datetime
 from typing import Dict, List
 
 import pandas as pd
@@ -42,8 +41,8 @@ class ExportController:
             # get and validate description
             description = catalog_instance["catalogDescription"].get("@value")
             if description is None or description == "":
-                logger.error(f"Empty catalog description: {instance_id}")
-                # todo remove record
+                logger.error(f"Empty catalog description: {instance_id}, skipping")
+                continue
             # get and validate content id
             project_id = self._get_and_validate_content_reference(catalog_instance)
             # get and validate dataset template instances' ids
@@ -158,7 +157,6 @@ class ExportController:
 
     def merge_content_data(self):
         """For each instance of Content Template searches for focus area"""
-        start = datetime.now()
         content_data_dicts = []
         for content_instance_id in self.content_ids:
             content_templ_json = self.client.get_template_instance(
@@ -168,8 +166,12 @@ class ExportController:
             scope = content_templ_json["Scope"]
             focus_area = scope["Focus Area"]["Focus Area"]
 
-            content_dict["focus_area_id"] = focus_area["@id"]
-            fa_label = focus_area["rdfs:label"]
+            content_dict["focus_area_id"] = focus_area.get("@id")
+            if content_dict["focus_area_id"] is None:
+                logger.warning(
+                    f"No Focus Area specified for Content Template {content_instance_id}"
+                )
+            fa_label = focus_area.get("rdfs:label")
             content_dict["focus_area"] = fa_label
             if fa_label == "other":
                 content_dict["keyword"].append(
@@ -182,15 +184,18 @@ class ExportController:
             content_dict["theme"] = themes
             content_dict["admin_instance_id"] = content_templ_json["Other"][
                 "Project Admin Instance ID"
-            ]["Project " "Admin " "Instance " "ID"].get("@value")
+            ]["Project Admin Instance ID"].get("@value")
             content_data_dicts.append(content_dict)
         contents_df = pd.DataFrame(data=content_data_dicts)
         td = pd.merge(
             self.overall_mapping, contents_df, how="outer", on="content_instance_id"
         )
+        admin_df = pd.DataFrame(data={"admin_instance_id": self.admin_ids})
+        admin_df["admin_graph_id"] = admin_df.index.map(
+            lambda x: f"http://example.com/dataset/{str(x)}"
+        )
+        td = pd.merge(admin_df, td, how="outer", on="admin_instance_id")
         # todo: maybe admin validation?
-        stop = datetime.now()
-        logger.info(f"First: {stop - start}")
         return td
 
     def collect_content_scope_data(self, scope, keywords, themes):

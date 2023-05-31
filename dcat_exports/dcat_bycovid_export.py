@@ -89,7 +89,6 @@ ADMIN_TEMPLATE = (
 CONTENT_TEMPLATE = (
     "https://repo.metadatacenter.org/templates/908e33e2-9485-4a93-ab22-1688dc5819dc",
 )
-CATALOG_TEMPLATE = "28d58a30-1a42-4715-a742-d2f46690563e"
 DATASET_TEMPLATE = (
     "https://repo.metadatacenter.org/templates/de169781-7f75-4aef-a0cb-ac435fe3a4c7",
 )
@@ -291,7 +290,7 @@ def export_admin_data_to_dataset(admin_instance, subject):
         start_date=start_date,
         end_date=end_date,
         contact_point=primary_contact,
-    ).to_graph()
+    )
     return dataset
 
 
@@ -306,70 +305,39 @@ def write_datasets(
         client.search_instances(admin_template_id)
     ):
         admin_instance = CedarAdminInstance(admin_instance_id, client)
-        # admin_instance = client.get_template_instance(admin_instance_id)
-        # graph = Graph().parse(
-        #     data=admin_instance, format="json-ld", publicID="https://orcid.org"
-        # )
-        #
-        subject = URIRef(f"http://example.com/dataset/{index}")
-        # start = datetime.now()
 
-        # export.add((subject, RDF.type, DCAT.Dataset))
-        # query source
-        # dataset = query_dataset(graph=admin_instance.graph_data)
-        # #
-        # for s, p, o in dataset.graph:
-        #     export.add((subject, p, o))
-        # or find the same values recursively
-        #
+        subject = URIRef(f"http://example.com/dataset/{index}")
 
         dataset = export_admin_data_to_dataset(admin_instance, subject)
 
         ds_table = map_table.loc[
             map_table["admin_instance_id"] == admin_instance.admin_instance_id
         ][["description", "publisher", "keyword", "theme", "content_graph_id"]]
+        # todo move to model
         if not ds_table.empty:
             if ds_table.shape[0] > 1:
                 print("too many rows!!!!!")
             s = ds_table.to_dict("records")[0]
             descr = s["description"]
             if pd.notnull(descr):
-                dataset.add((subject, DCTERMS.description, Literal(descr)))
+                dataset.description = Literal(descr)
             publ = s["publisher"]
             if pd.notnull(publ):
-                dataset.add((subject, DCTERMS.publisher, URIRef(publ)))
+                dataset.publisher = URIRef(publ)
             kw = s["keyword"]
-            if kw:
-                keywords = [i for i in kw if pd.notnull(i)]
-                for k in keywords:
-                    dataset.add((subject, DCAT.keyword, Literal(k)))
+            if kw and isinstance(kw, list):
+                keywords = [Literal(i) for i in kw if pd.notnull(i)]
+                dataset.keyword = keywords
             themes = s["theme"]
-            if themes:
-                th = [i for i in themes if pd.notnull(i)]
-                for t in th:
-                    dataset.add((subject, DCAT.theme, URIRef(t)))
+            if themes and isinstance(kw, list):
+                theme = [URIRef(i) for i in themes if pd.notnull(i)]
+                dataset.theme = theme
 
-        # for title in self.title:
-        #     graph.add((subject, DCTERMS.title, title))
+        export += dataset.to_graph()
 
-        export += dataset
-        # find_target_predicate_chain_values(
-        #     mapping_table=ADMIN_TEMPLATE_MAPPING,
-        #     source_subject=URIRef(admin_instance_id),
-        #     target_subject=subject,
-        #     graph=admin_instance.graph_data,
-        #     export=export,
-        # )
-        # end = datetime.now()
-        # print(end - start)
-
-        catalog_id_df = ds_table["content_graph_id"]
-        if not catalog_id_df.empty:
-            catalog_id = URIRef(catalog_id_df.values[0])
-
-            # catalog_id = get_catalog_id(
-            #     admin_instance_id, admin_to_content_mapping, content_to_catalog_mapping
-            # )
+        catalog_ids = ds_table["content_graph_id"].values
+        if catalog_ids.shape[0] > 0 and pd.notnull(catalog_ids[0]):
+            catalog_id = URIRef(catalog_ids[0])
             if pd.notnull(catalog_id):
                 export.add((catalog_id, DCAT.dataset, subject))
 
@@ -385,7 +353,7 @@ def get_resulting_catalog_mapping(catalogs):
     return resulting_catalog_mapping
 
 
-def write_dist(client, export):
+def write_dist(client, export, mapping_table):
     for index, instance_id in enumerate(client.search_instances(DISTRIBUTION_TEMPLATE)):
         dist_instance = client.get_template_instance_jsonld(instance_id)
         dist_graph = Graph().parse(data=dist_instance, format="json-ld")
@@ -464,8 +432,7 @@ def build_export_graph(client):
     )
 
     write_dist(
-        client=client,
-        export=export_graph,
+        client=client, export=export_graph, mapping_table=cedar_export.overall_mapping
     )
 
     return export_graph
