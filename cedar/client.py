@@ -49,11 +49,32 @@ class CedarClient(BasicAPIClient):
     def search_instances(self, template_id: str) -> List[str]:
         """Searches template instances belonging to a template with certain id
         returns a list of template instances ids"""
+        limit = 100  # default
+        offset = 0
         response = self.get(
             path=CedarEndPoints.search,
-            params={"is_based_on": f"{CedarEndPoints.templates}/{template_id}"},
+            params={
+                "is_based_on": f"{CedarEndPoints.templates}/{template_id}",
+                "limit": limit,
+                "offset": offset,
+            },
         )
-        return [resource["@id"] for resource in response.json()["resources"]]
+        response = response.json()
+        total_count = response["totalCount"]
+        result = [resource["@id"] for resource in response["resources"]]
+        while len(result) < total_count:
+            offset += limit
+            response = self.get(
+                path=CedarEndPoints.search,
+                params={
+                    "is_based_on": f"{CedarEndPoints.templates}/{template_id}",
+                    "limit": limit,
+                    "offset": offset,
+                },
+            )
+            response = response.json()
+            result += [resource["@id"] for resource in response["resources"]]
+        return result
 
 
 class Schema:
