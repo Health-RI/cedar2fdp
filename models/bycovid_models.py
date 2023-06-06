@@ -1,21 +1,16 @@
 """Pydantic models for FDP objects"""
-from typing import Any, List, Optional, Union
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 from rdflib import BNode, Graph, Literal, URIRef
 from rdflib.namespace import DCAT, DCTERMS, RDF, XSD
 
 
-class ModelField(BaseModel):
-    predicate: URIRef
-    value: Any
-
-
 class DCATDataSet(BaseModel):
     """DCAT Dataset model"""
 
     uri: URIRef
-    title: Union[List[Literal]]
+    title: List[Literal]
     description: Literal
     creator: List[URIRef]
     start_date: Optional[Literal]
