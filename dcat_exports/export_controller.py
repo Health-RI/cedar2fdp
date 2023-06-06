@@ -174,6 +174,16 @@ class ExportController:
                 continue
             fa_label = focus_area.get("rdfs:label")
             content_dict["focus_area"] = fa_label
+            # get reference to Admin template
+            admin_reference = content_templ_json["Other"]["Project Admin Instance ID"][
+                "Project Admin Instance ID"
+            ].get("@value")
+            if admin_reference is None:
+                logger.warning(
+                    f"Content template {content_instance_id} does not refer to an Admin instance, skipping"
+                )
+                continue
+            content_dict["admin_instance_id"] = admin_reference
             # save other focus area to keywords
             if fa_label == "other":
                 content_dict["keyword"].append(
@@ -193,13 +203,13 @@ class ExportController:
             self.collect_content_scope_data(scope, keywords, themes)
             content_dict["keyword"] += keywords
             content_dict["theme"] = themes
-            # get reference to Admin template
-            content_dict["admin_instance_id"] = content_templ_json["Other"][
-                "Project Admin Instance ID"
-            ]["Project Admin Instance ID"].get("@value")
+            # # get reference to Admin template
+            # content_dict["admin_instance_id"] = content_templ_json["Other"][
+            #     "Project Admin Instance ID"
+            # ]["Project Admin Instance ID"].get("@value")
             content_data_dicts.append(content_dict)
         contents_df = pd.DataFrame(data=content_data_dicts)
-        td = pd.merge(
+        combined_dataframe = pd.merge(
             self.overall_mapping, contents_df, how="outer", on="content_instance_id"
         )
         # Create a table with admin instances and merge other mappings table
@@ -207,25 +217,57 @@ class ExportController:
         admin_df["admin_graph_id"] = admin_df.index.map(
             lambda x: f"http://example.com/dataset/{str(x)}"
         )
-        td = pd.merge(admin_df, td, how="outer", on="admin_instance_id")
+        combined_dataframe = pd.merge(
+            admin_df, combined_dataframe, how="outer", on="admin_instance_id"
+        )
+        self._validate_content_mapping(combined_dataframe)
         # explode admin subject link in case of multiple descriptions
-        td["count"] = td.groupby(["admin_instance_id"], dropna=False)[
-            "description"
-        ].transform("nunique")
-        td.loc[
-            (td["count"].astype(int) > 1) & (pd.notnull(td["admin_graph_id"])),
+        combined_dataframe["count"] = combined_dataframe.groupby(
+            ["admin_instance_id"], dropna=False
+        )["description"].transform("nunique")
+        combined_dataframe.loc[
+            (combined_dataframe["count"].astype(int) > 1)
+            & (pd.notnull(combined_dataframe["admin_graph_id"])),
             "admin_graph_id",
         ] = (
-            td["admin_graph_id"].astype(str)
+            combined_dataframe["admin_graph_id"].astype(str)
             + "#"
-            + td.groupby(["admin_instance_id"], dropna=False)["description"]
+            + combined_dataframe.groupby(["admin_instance_id"], dropna=False)[
+                "description"
+            ]
             .transform("cumcount")
             .astype(str)
         )
-        td.loc[pd.isnull(td["description"]), "description"] = td["content_title"]
-        td = self._validate_focus_area(td)
-        td = self._validate_admin_mapping(td)
-        return td
+        combined_dataframe.loc[
+            pd.isnull(combined_dataframe["description"]), "description"
+        ] = combined_dataframe["content_title"]
+
+        combined_dataframe = self._validate_focus_area(combined_dataframe)
+        combined_dataframe = self._validate_admin_mapping(combined_dataframe)
+        return combined_dataframe
+
+    def _validate_content_mapping(self, dataframe):
+        incorrect_admin_ref = dataframe.loc[
+            pd.notnull(dataframe["admin_instance_id"])
+            & (~dataframe["admin_instance_id"].isin(self.admin_ids))
+        ]
+        if not incorrect_admin_ref.empty:
+            content_adm = incorrect_admin_ref[
+                ["admin_instance_id", "content_instance_id"]
+            ].to_dict("records")
+            logger.warning(
+                f"An Admin template reference is not an Admin Template instance for the following "
+                f"Content templates: "
+            )
+            for record in content_adm:
+                logger.warning(
+                    f"Content instance {record['content_instance_id']} refers to "
+                    f"{record['admin_instance_id']}, please check"
+                )
+        # no_admin = dataframe.loc[pd.isnull(dataframe["admin_instance_id"])]
+        # if not no_admin.empty:
+        #     content_templ = ",\n".join(no_admin["content_instance_id"].values)
+        #     logger.warning(f"Following Content templates: {content_templ}")
 
     @staticmethod
     def _validate_admin_mapping(dataframe):

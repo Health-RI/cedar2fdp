@@ -86,10 +86,6 @@ DIST_MAPPING = {
 CONTENT_TEMPLATE = (
     "https://repo.metadatacenter.org/templates/908e33e2-9485-4a93-ab22-1688dc5819dc",
 )
-DATASET_TEMPLATE = (
-    "https://repo.metadatacenter.org/templates/de169781-7f75-4aef-a0cb-ac435fe3a4c7",
-)
-DISTRIBUTION_TEMPLATE = "22925909-9fb2-4ac8-a986-6db5ae7049e7"
 
 FOCUS_AREA_MAPPING = (
     "https://schema.metadatacenter.org/properties/7cb60a0c-4931-454a-8fca-1fd3faa8462f",
@@ -110,9 +106,6 @@ class ByCovidConfig(metaclass=CedarConfig):
     content_templ_id = "908e33e2-9485-4a93-ab22-1688dc5819dc"
     dataset_templ_id = "de169781-7f75-4aef-a0cb-ac435fe3a4c7"
     distribution_templ_id = "22925909-9fb2-4ac8-a986-6db5ae7049e7"
-
-
-# (0000-000(?:1-[5-9]|2-[0-9]|3-[0-4])\d{3}-\d{3}[\dX]?)|(0009-00[0-1](?:[0-9]-[0-9])\d{3}-\d{3}[\dX]?)
 
 
 # ORCID iDs are typically the 16-digit identifiers are assigned between 0000-0001-5000-0007 and 0000-0003-5000-0001,
@@ -373,27 +366,31 @@ def get_resulting_catalog_mapping(catalogs):
 
 
 def write_dist(client, export, mapping_table):
-    for index, instance_id in enumerate(client.search_instances(DISTRIBUTION_TEMPLATE)):
+    distr_ids = (
+        mapping_table.loc[
+            pd.notnull(mapping_table["admin_graph_id"])
+            & pd.notnull(mapping_table["distribution_id"]),
+            "distribution_id",
+        ]
+        .drop_duplicates()
+        .values
+    )
+    for index, instance_id in enumerate(distr_ids):
         dataset = mapping_table.loc[
             mapping_table["distribution_id"] == instance_id, "admin_graph_id"
         ].values
-        if dataset.shape[0] > 0:
-            subject = URIRef(f"http://example.com/distribution/{index}")
-            export.add((URIRef(dataset[0]), DCAT.distribution, subject))
-            dist_instance = client.get_template_instance_jsonld(instance_id)
-            dist_graph = Graph().parse(data=dist_instance, format="json-ld")
-            # subject = URIRef(f"http://example.com/distribution/{index}")
-            export.add((subject, RDF.type, DCAT.Distribution))
-            find_target_predicate_chain_values(
-                mapping_table=DIST_MAPPING,
-                source_subject=URIRef(instance_id),
-                target_subject=subject,
-                graph=dist_graph,
-                export=export,
-            )
-        # dataset = mapping_table.loc[mapping_table["distribution_id"] == instance_id, "admin_graph_id"].values
-        # if dataset.shape[0] > 0:
-        #     export.add((URIRef(dataset[0]), DCAT.distribution, subject))
+        subject = URIRef(f"http://example.com/distribution/{index}")
+        export.add((URIRef(dataset[0]), DCAT.distribution, subject))
+        dist_instance = client.get_template_instance_jsonld(instance_id)
+        dist_graph = Graph().parse(data=dist_instance, format="json-ld")
+        export.add((subject, RDF.type, DCAT.Distribution))
+        find_target_predicate_chain_values(
+            mapping_table=DIST_MAPPING,
+            source_subject=URIRef(instance_id),
+            target_subject=subject,
+            graph=dist_graph,
+            export=export,
+        )
 
 
 def write_top_level(export):
