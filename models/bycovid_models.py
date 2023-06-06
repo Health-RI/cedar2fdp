@@ -1,9 +1,14 @@
 """Pydantic models for FDP objects"""
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 from pydantic import BaseModel, Field
 from rdflib import BNode, Graph, Literal, URIRef
 from rdflib.namespace import DCAT, DCTERMS, RDF, XSD
+
+
+class ModelField(BaseModel):
+    predicate: URIRef
+    value: Any
 
 
 class DCATDataSet(BaseModel):
@@ -11,15 +16,14 @@ class DCATDataSet(BaseModel):
 
     uri: URIRef
     title: Union[List[Literal]]
-    # todo make description mandatory
-    description: Optional[Literal]
+    description: Literal
     creator: List[URIRef]
     start_date: Optional[Literal]
     end_date: Optional[Literal]
     contact_point: List[URIRef]
     publisher: Optional[URIRef]
-    keyword: Optional[Literal] = Field(default_factory=list)
-    theme: Optional[URIRef] = Field(default_factory=list)
+    keyword: Optional[List[Literal]] = Field(default_factory=list)
+    theme: Optional[List[URIRef]] = Field(default_factory=list)
 
     def to_graph(self) -> Graph:
         """Converts class instance to dcat dataset graph"""

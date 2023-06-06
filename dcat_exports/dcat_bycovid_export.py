@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pandas as pd
 import yaml
-from rdflib import DCAT, DCTERMS, RDF, RDFS, Graph, URIRef
+from rdflib import DCAT, DCTERMS, FOAF, RDF, RDFS, XSD, Graph, URIRef
 from rdflib.term import BNode, Literal
 
 from cedar.client import CedarClient
@@ -83,9 +83,6 @@ DIST_MAPPING = {
     "http://www.w3.org/ns/dcat#accessURL": ("http://www.w3.org/ns/dcat#accessURL",),
 }
 
-ADMIN_TEMPLATE = (
-    "https://repo.metadatacenter.org/templates/337cb6f3-eef6-4b2f-9ffb-3f6d6cc9b9ac",
-)
 CONTENT_TEMPLATE = (
     "https://repo.metadatacenter.org/templates/908e33e2-9485-4a93-ab22-1688dc5819dc",
 )
@@ -104,6 +101,7 @@ CATALOG_TO_ADMIN_MAPPING = (
     "https://schema.metadatacenter.org/properties/d9ff53e9-7762-4b0b-a466-c750148b3baa",
     "https://schema.metadatacenter.org/properties/7e519671-cb71-4bb9-8540-49989f5ca3db",
 )
+BY_COVID_URI = URIRef("https://covid19initiatives.health-ri.nl")
 
 
 class ByCovidConfig(metaclass=CedarConfig):
@@ -256,7 +254,7 @@ def get_catalog_id(
     return catalog_id
 
 
-def export_admin_data_to_dataset(admin_instance, subject):
+def export_admin_data_to_dataset(admin_instance, subject, catalog_dict):
     title = admin_instance.get_title(
         ADMIN_TEMPLATE_MAPPING["http://purl.org/dc/terms/title"],
         language_predicate=ADMIN_TEMPLATE_MAPPING["language"][-1],
@@ -283,13 +281,31 @@ def export_admin_data_to_dataset(admin_instance, subject):
         ADMIN_TEMPLATE_MAPPING["http://www.w3.org/ns/dcat#contactPoint"]
     )
 
+    publisher = catalog_dict["publisher"]
+    if pd.notnull(publisher):
+        publisher = URIRef(publisher)
+    else:
+        publisher = None
+    keywords = []
+    kw = catalog_dict["keyword"]
+    if kw and isinstance(kw, list):
+        keywords = [Literal(i) for i in kw if pd.notnull(i)]
+    theme = []
+    themes = catalog_dict["theme"]
+    if themes and isinstance(kw, list):
+        theme = [URIRef(i) for i in themes if pd.notnull(i)]
+
     dataset = DCATDataSet(
         uri=subject,
         title=title,
         creator=creator,
+        description=Literal(catalog_dict["description"]),
         start_date=start_date,
         end_date=end_date,
         contact_point=primary_contact,
+        publisher=publisher,
+        keyword=keywords,
+        theme=theme,
     )
     return dataset
 
@@ -299,47 +315,50 @@ def write_datasets(
     export: Graph,
     map_table: pd.DataFrame,
 ) -> None:
-    admin_template_id = ADMIN_TEMPLATE[0].rsplit("/", maxsplit=1)[-1]
 
-    for index, admin_instance_id in enumerate(
-        client.search_instances(admin_template_id)
-    ):
+    map_table = map_table[
+        [
+            "admin_instance_id",
+            "admin_graph_id",
+            "description",
+            "publisher",
+            "keyword",
+            "theme",
+            "content_graph_id",
+        ]
+    ].dropna(subset=["admin_graph_id"], axis="rows")
+    admin_ids = map_table["admin_instance_id"].unique()
+
+    for admin_instance_id in admin_ids:
         admin_instance = CedarAdminInstance(admin_instance_id, client)
-
-        subject = URIRef(f"http://example.com/dataset/{index}")
-
-        dataset = export_admin_data_to_dataset(admin_instance, subject)
 
         ds_table = map_table.loc[
             map_table["admin_instance_id"] == admin_instance.admin_instance_id
-        ][["description", "publisher", "keyword", "theme", "content_graph_id"]]
-        # todo move to model
-        if not ds_table.empty:
-            if ds_table.shape[0] > 1:
-                print("too many rows!!!!!")
-            s = ds_table.to_dict("records")[0]
-            descr = s["description"]
-            if pd.notnull(descr):
-                dataset.description = Literal(descr)
-            publ = s["publisher"]
-            if pd.notnull(publ):
-                dataset.publisher = URIRef(publ)
-            kw = s["keyword"]
-            if kw and isinstance(kw, list):
-                keywords = [Literal(i) for i in kw if pd.notnull(i)]
-                dataset.keyword = keywords
-            themes = s["theme"]
-            if themes and isinstance(kw, list):
-                theme = [URIRef(i) for i in themes if pd.notnull(i)]
-                dataset.theme = theme
+        ][
+            [
+                "admin_graph_id",
+                "description",
+                "publisher",
+                "keyword",
+                "theme",
+                "content_graph_id",
+            ]
+        ].drop_duplicates(
+            subset=["admin_graph_id", "description"]
+        )
+        ds_list_of_records = ds_table.to_dict("records")
+        for record in ds_list_of_records:
+            subject = URIRef(record["admin_graph_id"])
+            dataset = export_admin_data_to_dataset(admin_instance, subject, record)
+            if str(dataset.title).startswith("TEST-"):
+                continue
+            export += dataset.to_graph()
 
-        export += dataset.to_graph()
-
-        catalog_ids = ds_table["content_graph_id"].values
-        if catalog_ids.shape[0] > 0 and pd.notnull(catalog_ids[0]):
-            catalog_id = URIRef(catalog_ids[0])
-            if pd.notnull(catalog_id):
-                export.add((catalog_id, DCAT.dataset, subject))
+            catalog_ids = ds_table["content_graph_id"].values
+            if catalog_ids.shape[0] > 0 and pd.notnull(catalog_ids[0]):
+                catalog_id = URIRef(catalog_ids[0])
+                if pd.notnull(catalog_id):
+                    export.add((catalog_id, DCAT.dataset, subject))
 
 
 def get_resulting_catalog_mapping(catalogs):
@@ -355,17 +374,52 @@ def get_resulting_catalog_mapping(catalogs):
 
 def write_dist(client, export, mapping_table):
     for index, instance_id in enumerate(client.search_instances(DISTRIBUTION_TEMPLATE)):
-        dist_instance = client.get_template_instance_jsonld(instance_id)
-        dist_graph = Graph().parse(data=dist_instance, format="json-ld")
-        subject = URIRef(f"http://example.com/distribution/{index}")
-        export.add((subject, RDF.type, DCAT.Distribution))
-        find_target_predicate_chain_values(
-            mapping_table=DIST_MAPPING,
-            source_subject=URIRef(instance_id),
-            target_subject=subject,
-            graph=dist_graph,
-            export=export,
-        )
+        dataset = mapping_table.loc[
+            mapping_table["distribution_id"] == instance_id, "admin_graph_id"
+        ].values
+        if dataset.shape[0] > 0:
+            subject = URIRef(f"http://example.com/distribution/{index}")
+            export.add((URIRef(dataset[0]), DCAT.distribution, subject))
+            dist_instance = client.get_template_instance_jsonld(instance_id)
+            dist_graph = Graph().parse(data=dist_instance, format="json-ld")
+            # subject = URIRef(f"http://example.com/distribution/{index}")
+            export.add((subject, RDF.type, DCAT.Distribution))
+            find_target_predicate_chain_values(
+                mapping_table=DIST_MAPPING,
+                source_subject=URIRef(instance_id),
+                target_subject=subject,
+                graph=dist_graph,
+                export=export,
+            )
+        # dataset = mapping_table.loc[mapping_table["distribution_id"] == instance_id, "admin_graph_id"].values
+        # if dataset.shape[0] > 0:
+        #     export.add((URIRef(dataset[0]), DCAT.distribution, subject))
+
+
+def write_top_level(export):
+    """Adds top-level Catalog pointing to Covid-19 portal"""
+    by_covid_uri = BY_COVID_URI
+    title = "COVID-19 related data initiatives - Project overview"
+    description = (
+        "Health-RI launched the Dutch COVID-19 Data Support Programme to support investigators and "
+        "health care professionals with tools and services in their search for ways to overcome the "
+        "pandemic and its' health consequences. \n"
+        "To facilitate and stimulate an integrated health data infrastructure, Health-RI facilitates "
+        "investigators by connecting communities, providing data services and tools, and presenting an "
+        "overview of COVID-19 related initiatives, provided on this site."
+    )
+    issued = datetime.now().date()
+    keywords = ["COVID-19"]
+    homepage = "https://covid19initiatives.health-ri.nl/p/ProjectOverview"
+
+    export.bind("foaf", FOAF)
+    export.add((by_covid_uri, RDF.type, DCAT.Catalog))
+    export.add((by_covid_uri, DCTERMS.title, Literal(title)))
+    export.add((by_covid_uri, DCTERMS.description, Literal(description)))
+    export.add((by_covid_uri, DCTERMS.issued, Literal(issued, datatype=XSD.date)))
+    for keyword in keywords:
+        export.add((by_covid_uri, DCAT.keyword, Literal(keyword)))
+    export.add((by_covid_uri, FOAF.homepage, URIRef(homepage)))
 
 
 def build_export_graph(client):
@@ -373,6 +427,8 @@ def build_export_graph(client):
     # bind namespaces
     export_graph.bind("dcat", DCAT)
     export_graph.bind("dcterms", DCTERMS)
+
+    write_top_level(export_graph)
 
     cedar_export = ExportController(client, ByCovidConfig)
     cedar_export.overall_mapping = cedar_export.get_catalogs_data()
@@ -389,19 +445,7 @@ def build_export_graph(client):
     ].apply(
         lambda x: f"http://example.com/catalog/{str(int(x))}" if pd.notnull(x) else x
     )
-    # catalog_df = cedar_export.overall_mapping.copy()
-    # catalog_df = catalog_df[["focus_area_id", "focus_area", "@id"]].drop_duplicates().dropna()
-    # catalog_df["@id"] = catalog_df["@id"].apply(lambda x: f"http://example.com/catalog/{str(int(x))}")
-    # catalog_df = catalog_df.set_index("@id")
-    # catalog_df.rename(columns={"focus_area_id": DCAT.theme, "focus_area": DCTERMS.title}, inplace=True)
 
-    # namespace_manager = NamespaceManager(Graph())
-    # namespace_manager.bind("dcat", DCAT)
-    # namespace_manager.bind("dcterms", DCTERMS)
-    #
-    # g = rdfpandas.to_graph(catalog_df, namespace_manager)
-
-    # catalogs_dict_view_list = list(catalogs.items())
     df = (
         cedar_export.overall_mapping.copy()[
             ["content_graph_id", "focus_area", "focus_area_id"]
@@ -409,6 +453,7 @@ def build_export_graph(client):
         .dropna()
         .drop_duplicates()
     )
+
     content_items = df.to_dict("records")
     for item in content_items:
         subject = URIRef(item["content_graph_id"])
@@ -419,11 +464,12 @@ def build_export_graph(client):
                 DCTERMS.title,
                 Literal(
                     item["focus_area"],
-                    datatype="http://www.w3.org/2001/XMLSchema#string",
+                    datatype=XSD.string,
                 ),
             )
         )
         export_graph.add((subject, DCAT.theme, URIRef(item["focus_area_id"])))
+        export_graph.add((BY_COVID_URI, DCAT.catalog, subject))
 
     write_datasets(
         client=client,
@@ -444,6 +490,9 @@ def export_dcat():
     export = build_export_graph(client=client)
     export.serialize(
         destination=f"../example-output/{datetime.now().date()}_output.ttl"
+    )
+    export.serialize(
+        destination=f"../example-output/{datetime.now().date()}_output.xml"
     )
     print(export.serialize())
 

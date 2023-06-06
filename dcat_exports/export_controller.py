@@ -156,7 +156,7 @@ class ExportController:
         )
 
     def merge_content_data(self):
-        """For each instance of Content Template searches for focus area"""
+        """For each instance of Content Template searches for focus area, keywords, themes and description"""
         content_data_dicts = []
         for content_instance_id in self.content_ids:
             content_templ_json = self.client.get_template_instance(
@@ -164,24 +164,36 @@ class ExportController:
             ).json()
             content_dict = {"content_instance_id": content_instance_id, "keyword": []}
             scope = content_templ_json["Scope"]
+            # get focus area
             focus_area = scope["Focus Area"]["Focus Area"]
-
             content_dict["focus_area_id"] = focus_area.get("@id")
             if content_dict["focus_area_id"] is None:
                 logger.warning(
-                    f"No Focus Area specified for Content Template {content_instance_id}"
+                    f"No Focus Area specified for Content Template {content_instance_id}, skipping instance"
                 )
+                continue
             fa_label = focus_area.get("rdfs:label")
             content_dict["focus_area"] = fa_label
+            # save other focus area to keywords
             if fa_label == "other":
                 content_dict["keyword"].append(
                     scope["Focus Area"]["Other Focus Area"].get("@value")
                 )
+            # get content id title
+            content_title = [
+                item["Project Title"].get("@value")
+                for item in content_templ_json["Project Title"]
+                if item["Project Title"].get("@value") is not None
+            ]
+            if content_title:
+                content_dict["content_title"] = "; ".join(content_title)
+            # get keywords and themes
             keywords = []
             themes = []
             self.collect_content_scope_data(scope, keywords, themes)
             content_dict["keyword"] += keywords
             content_dict["theme"] = themes
+            # get reference to Admin template
             content_dict["admin_instance_id"] = content_templ_json["Other"][
                 "Project Admin Instance ID"
             ]["Project Admin Instance ID"].get("@value")
@@ -190,13 +202,93 @@ class ExportController:
         td = pd.merge(
             self.overall_mapping, contents_df, how="outer", on="content_instance_id"
         )
+        # Create a table with admin instances and merge other mappings table
         admin_df = pd.DataFrame(data={"admin_instance_id": self.admin_ids})
         admin_df["admin_graph_id"] = admin_df.index.map(
             lambda x: f"http://example.com/dataset/{str(x)}"
         )
         td = pd.merge(admin_df, td, how="outer", on="admin_instance_id")
-        # todo: maybe admin validation?
+        # explode admin subject link in case of multiple descriptions
+        td["count"] = td.groupby(["admin_instance_id"], dropna=False)[
+            "description"
+        ].transform("nunique")
+        td.loc[
+            (td["count"].astype(int) > 1) & (pd.notnull(td["admin_graph_id"])),
+            "admin_graph_id",
+        ] = (
+            td["admin_graph_id"].astype(str)
+            + "#"
+            + td.groupby(["admin_instance_id"], dropna=False)["description"]
+            .transform("cumcount")
+            .astype(str)
+        )
+        td.loc[pd.isnull(td["description"]), "description"] = td["content_title"]
+        td = self._validate_focus_area(td)
+        td = self._validate_admin_mapping(td)
         return td
+
+    @staticmethod
+    def _validate_admin_mapping(dataframe):
+        no_description = dataframe.loc[
+            pd.isnull(dataframe["content_instance_id"])
+            | pd.isnull(dataframe["description"])
+        ]
+        if not no_description.empty:
+            logger.warning(
+                f"Following Admin template we not linked to a Content template and will be removed:"
+            )
+            logger.warning(
+                f"{', '.join(no_description['admin_instance_id'].dropna().values)}"
+            )
+            dataframe = dataframe.loc[
+                pd.notnull(dataframe["content_instance_id"])
+                | pd.notnull(dataframe["description"])
+            ]
+        return dataframe
+
+    @staticmethod
+    def _validate_focus_area(dataframe):
+        """Validates if focus area and focus area id are one-to-one correspondence"""
+        invalid_fa = dataframe.loc[
+            (
+                dataframe.index.isin(
+                    dataframe.drop_duplicates(
+                        subset=["focus_area", "focus_area_id"]
+                    ).index
+                )
+            )
+            & (
+                ~dataframe.index.isin(
+                    dataframe.drop_duplicates(subset=["focus_area"]).index
+                )
+            )
+        ]
+        if not invalid_fa.empty:
+            fa_in_question = dataframe.loc[
+                dataframe["focus_area_id"].isin(invalid_fa["focus_area_id"])
+                | dataframe["focus_area"].isin(invalid_fa["focus_area"])
+            ][["focus_area_id", "focus_area"]].drop_duplicates()
+
+            invalid_records = invalid_fa.to_dict("records")
+            for record in invalid_records:
+                focus_area_id = record["focus_area_id"]
+                focus_area = record["focus_area"]
+                logger.warning(
+                    f"Unexpected combination of focus area id and label {focus_area_id}: "
+                    f"{focus_area}"
+                )
+                correct_id = fa_in_question.loc[
+                    (fa_in_question["focus_area"] == focus_area)
+                    & (fa_in_question["focus_area_id"] != focus_area_id),
+                    "focus_area_id",
+                ].unique()
+                if correct_id.shape[0] == 1:
+                    correct_id = correct_id[0]
+                    logger.info(f"Replacing {focus_area_id} with {correct_id}")
+                    dataframe.loc[
+                        dataframe["focus_area"] == focus_area, "focus_area_id"
+                    ] = correct_id
+        return dataframe
 
     def collect_content_scope_data(self, scope, keywords, themes):
         if isinstance(scope, List):
