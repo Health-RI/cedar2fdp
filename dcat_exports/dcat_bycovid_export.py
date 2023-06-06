@@ -76,7 +76,7 @@ DIST_MAPPING = {
     # "datasetDate": ("http://purl.org/dc/terms/issued"),
     "http://purl.org/dc/terms/format": ("http://purl.org/dc/terms/conformsTo",),
     # "distributionMediaType": "http://www.w3.org/ns/dcat#mediaType",
-    # "title": "http://purl.org/dc/terms/title",
+    "http://purl.org/dc/terms/title": ("http://purl.org/dc/terms/title",),
     # "accessService": "http://www.w3.org/ns/dcat#accessService",
     "http://purl.org/dc/terms/description": ("http://purl.org/dc/terms/description",),
     "http://purl.org/dc/terms/license": ("http://purl.org/dc/terms/license",),
