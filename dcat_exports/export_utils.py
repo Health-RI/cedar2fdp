@@ -84,7 +84,7 @@ def get_object_recursively(
 
 
 def update_language(
-    value: Tuple[Literal, URIRef, None], instance_id: str = None
+    value: Tuple[Literal, Union[BNode, URIRef, None]], instance_id: str = None
 ) -> Literal:
     """
     Updates _language for a Literal
