@@ -7,7 +7,6 @@ from dcat_exports.export_utils import implement_recursion, update_language
 
 ROOT_DIR = Path(__file__).parents[2]
 INPUT_DIR = Path(ROOT_DIR, "./example-input")
-# OUTPUT_DIR = Path(ROOT_DIR, "./example-output")
 
 # Not importing mapping here to test utility functions independently
 ADMIN_TEMPLATE_MAPPING = {

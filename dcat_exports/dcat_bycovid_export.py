@@ -304,7 +304,7 @@ def build_export_graph(client):
         lambda x: f"http://example.com/catalog/{str(int(x))}" if pd.notnull(x) else x
     )
 
-    df = (
+    focus_area_frame = (
         cedar_export.overall_mapping.copy()[
             ["content_graph_id", "focus_area", "focus_area_id"]
         ]
@@ -312,7 +312,7 @@ def build_export_graph(client):
         .drop_duplicates()
     )
 
-    content_items = df.to_dict("records")
+    content_items = focus_area_frame.to_dict("records")
     for item in content_items:
         subject = URIRef(item["content_graph_id"])
         export_graph.add((subject, RDF.type, DCAT.Catalog))
