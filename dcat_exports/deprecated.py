@@ -106,6 +106,17 @@ def get_links_to_admin(content_instance_id, graph):
     return admin_template_id
 
 
+def get_resulting_catalog_mapping(catalogs):
+    catalog_values = [item["content_instances"] for item in catalogs.values()]
+
+    resulting_catalog_mapping = {
+        content_inst: URIRef(f"http://example.com/catalog/{catalog_values.index(lst)}")
+        for lst in catalog_values
+        for content_inst in lst
+    }
+    return resulting_catalog_mapping
+
+
 def query_dataset(graph):
     # def query_sparql(client: CedarClient, template_id):
     #     resource = client.get_template_instance(template_id)

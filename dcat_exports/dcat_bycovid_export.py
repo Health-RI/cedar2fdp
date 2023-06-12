@@ -215,17 +215,6 @@ def write_datasets(
                     export.add((catalog_id, DCAT.dataset, subject))
 
 
-def get_resulting_catalog_mapping(catalogs):
-    catalog_values = [item["content_instances"] for item in catalogs.values()]
-
-    resulting_catalog_mapping = {
-        content_inst: URIRef(f"http://example.com/catalog/{catalog_values.index(lst)}")
-        for lst in catalog_values
-        for content_inst in lst
-    }
-    return resulting_catalog_mapping
-
-
 def write_dist(client, export, mapping_table):
     distr_ids = (
         mapping_table.loc[
