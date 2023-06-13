@@ -219,7 +219,8 @@ def write_dist(client, export, mapping_table):
     distr_ids = (
         mapping_table.loc[
             pd.notnull(mapping_table["admin_graph_id"])
-            & pd.notnull(mapping_table["distribution_id"]),
+            & pd.notnull(mapping_table["distribution_id"])
+            & (mapping_table["distribution_id"].astype(str) != ""),
             "distribution_id",
         ]
         .drop_duplicates()
@@ -269,30 +270,7 @@ def write_top_level(export):
     export.add((by_covid_uri, FOAF.homepage, URIRef(homepage)))
 
 
-def build_export_graph(client):
-    export_graph = Graph()
-    # bind namespaces
-    export_graph.bind("dcat", DCAT)
-    export_graph.bind("dcterms", DCTERMS)
-
-    write_top_level(export_graph)
-
-    cedar_export = ExportController(client, ByCovidConfig)
-    cedar_export.overall_mapping = cedar_export.get_catalogs_data()
-    cedar_export.merge_datasets_distributions_ids()
-    cedar_export.overall_mapping = cedar_export.merge_content_data()
-
-    cedar_export.overall_mapping[
-        "content_graph_id"
-    ] = cedar_export.overall_mapping.groupby(
-        ["focus_area_id", "focus_area"], dropna=True
-    ).ngroup()
-    cedar_export.overall_mapping["content_graph_id"] = cedar_export.overall_mapping[
-        "content_graph_id"
-    ].apply(
-        lambda x: f"http://example.com/catalog/{str(int(x))}" if pd.notnull(x) else x
-    )
-
+def write_catalogs(cedar_export, export_graph):
     focus_area_frame = (
         cedar_export.overall_mapping.copy()[
             ["content_graph_id", "focus_area", "focus_area_id"]
@@ -317,6 +295,33 @@ def build_export_graph(client):
         )
         export_graph.add((subject, DCAT.theme, URIRef(item["focus_area_id"])))
         export_graph.add((BY_COVID_URI, DCAT.catalog, subject))
+
+
+def build_export_graph(client):
+    export_graph = Graph()
+    # bind namespaces
+    export_graph.bind("dcat", DCAT)
+    export_graph.bind("dcterms", DCTERMS)
+
+    write_top_level(export_graph)
+
+    cedar_export = ExportController(client, ByCovidConfig)
+    cedar_export.overall_mapping = cedar_export.get_catalogs_data()
+    cedar_export.merge_datasets_distributions_ids()
+    cedar_export.overall_mapping = cedar_export.merge_content_data()
+
+    cedar_export.overall_mapping[
+        "content_graph_id"
+    ] = cedar_export.overall_mapping.groupby(
+        ["focus_area_id", "focus_area"], dropna=True
+    ).ngroup()
+    cedar_export.overall_mapping["content_graph_id"] = cedar_export.overall_mapping[
+        "content_graph_id"
+    ].apply(
+        lambda x: f"http://example.com/catalog/{str(int(x))}" if pd.notnull(x) else x
+    )
+
+    write_catalogs(cedar_export=cedar_export, export_graph=export_graph)
 
     write_datasets(
         client=client,

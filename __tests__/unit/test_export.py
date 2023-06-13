@@ -54,9 +54,7 @@ def compare_files(file1_path, file2_path):
 
 @pytest.fixture(scope="module")
 def setup():
-    test_output_path = Path(OUTPUT_DIR, "output-test").mkdir(
-        parents=True, exist_ok=True
-    )
+    Path(OUTPUT_DIR, "output-test").mkdir(parents=True, exist_ok=True)
 
 
 @pytest.fixture()
@@ -101,3 +99,9 @@ def test_top_level_bycovid(empty_graph, setup):
     empty_graph.serialize(destination=test_path)
     # Assert
     assert compare_files(expected_path, test_path)
+
+
+@pytest.mark.parametrize("test_file_name")
+@patch("cedar.client.CedarClient")
+def test_write_datasets(test_file_name, cedar_client, empty_graph):
+    pass
