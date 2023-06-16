@@ -1,0 +1,7 @@
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix v: <http://www.w3.org/2006/vcard/ns#> .
+
+<http://example.com> a dcat:Dataset ;
+    dcterms:creator [ a v:VCard ] .
+

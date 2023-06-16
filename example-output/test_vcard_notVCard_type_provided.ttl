@@ -1,0 +1,6 @@
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+<http://example.com> a dcat:Dataset ;
+    dcterms:creator <http://orcid.org/test_id1> .
+

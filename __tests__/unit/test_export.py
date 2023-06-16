@@ -5,13 +5,14 @@ from unittest.mock import patch
 import pytest
 from colorama import Fore
 from freezegun import freeze_time
-from rdflib import DCAT, DCTERMS, Graph
+from rdflib import DCAT, DCTERMS, RDF, BNode, Graph, Literal, URIRef
 
 from dcat_exports.cedar_source_data import CedarAdminInstance
 from dcat_exports.dcat_bycovid_export import (
     export_admin_data_to_dataset,
     write_top_level,
 )
+from models.bycovid_models import VCARD, DCATDataSet, VCard
 
 ROOT_DIR = Path(__file__).parents[2]
 INPUT_DIR = Path(ROOT_DIR, "./example-input")
@@ -62,6 +63,7 @@ def empty_graph():
     graph = Graph()
     graph.bind("dcat", DCAT)
     graph.bind("dcterms", DCTERMS)
+    graph.bind("v", VCARD)
     return graph
 
 
@@ -101,7 +103,126 @@ def test_top_level_bycovid(empty_graph, setup):
     assert compare_files(expected_path, test_path)
 
 
-@pytest.mark.parametrize("test_file_name")
-@patch("cedar.client.CedarClient")
-def test_write_datasets(test_file_name, cedar_client, empty_graph):
-    pass
+# @pytest.mark.parametrize("test_file_name")
+# @patch("cedar.client.CedarClient")
+# def test_write_datasets(test_file_name, cedar_client, empty_graph):
+#     pass
+
+
+@pytest.mark.parametrize(
+    "user_info,expected_file,info_type",
+    [
+        (
+            [
+                {
+                    "full_name": Literal("Maria der Vries"),
+                    "uid": URIRef("http://orcid.org/test_id1"),
+                }
+            ],
+            "test_vcard_one_user.ttl",
+            VCARD.VCard,
+        ),
+        (
+            [
+                {
+                    "full_name": Literal("Maria der Vries"),
+                    "uid": URIRef("http://orcid.org/test_id1"),
+                },
+                {
+                    "full_name": Literal("Jan der Vries"),
+                    "uid": URIRef("http://orcid.org/test_id2"),
+                },
+            ],
+            "test_vcard_multiple.ttl",
+            VCARD.VCard,
+        ),
+        (
+            [{"full_name": BNode(), "uid": URIRef("http://orcid.org/test_id3")}],
+            "test_vcard_no_full_name.ttl",
+            VCARD.VCard,
+        ),
+        ([], "test_vcard_empty_node.ttl", VCARD.VCard),
+        ([], "test_vcard_empty_creator_node.ttl", VCARD.VCard),
+        (
+            [
+                {
+                    "full_name": Literal("Maria der Vries"),
+                    "uid": URIRef("http://orcid.org/test_id1"),
+                }
+            ],
+            "test_vcard_no_type_provided.ttl",
+            None,
+        ),
+        (
+            [
+                {
+                    "full_name": Literal("Maria der Vries"),
+                    "uid": URIRef("http://orcid.org/test_id1"),
+                }
+            ],
+            "test_vcard_notVCard_type_provided.ttl",
+            DCTERMS.creator,
+        ),
+    ],
+)
+def test_add_vcard_info(user_info, info_type, expected_file, empty_graph):
+    expected_path = Path(OUTPUT_DIR, expected_file)
+    test_path = Path(OUTPUT_DIR, "output-test", expected_file)
+    uri = URIRef("http://example.com")
+    title = [Literal("test title")]
+    description = Literal("test description")
+    creator = [
+        VCard(full_name=item.get("full_name"), uid=item["uid"]) for item in user_info
+    ]
+    contact_point = []
+    dcat_instance = DCATDataSet(
+        uri=uri,
+        title=title,
+        description=description,
+        creator=creator,
+        contact_point=contact_point,
+    )
+    empty_graph.add((uri, RDF.type, DCAT.Dataset))
+    dcat_instance.add_vcard_info(
+        attribute_name="creator",
+        graph=empty_graph,
+        subject=dcat_instance.uri,
+        predicate=DCTERMS.creator,
+        userinfo_format=info_type,
+    )
+    empty_graph.serialize(destination=test_path)
+    assert compare_files(expected_path, test_path)
+
+
+@pytest.mark.parametrize(
+    "user_info,expected_file,info_type",
+    [
+        ([], "test_user_uriref_empty_creator_node.ttl", None),
+        ([URIRef("http://orcid.org/test_id1")], "test_user_uriref_creator.ttl", None),
+    ],
+)
+def test_user_info_uriref(user_info, info_type, expected_file, empty_graph):
+    expected_path = Path(OUTPUT_DIR, expected_file)
+    test_path = Path(OUTPUT_DIR, "output-test", expected_file)
+    uri = URIRef("http://example.com")
+    title = [Literal("test title")]
+    description = Literal("test description")
+    creator = user_info
+    contact_point = []
+    dcat_instance = DCATDataSet(
+        uri=uri,
+        title=title,
+        description=description,
+        creator=creator,
+        contact_point=contact_point,
+    )
+    empty_graph.add((uri, RDF.type, DCAT.Dataset))
+    dcat_instance.add_vcard_info(
+        attribute_name="creator",
+        graph=empty_graph,
+        subject=dcat_instance.uri,
+        predicate=DCTERMS.creator,
+        userinfo_format=info_type,
+    )
+    empty_graph.serialize(destination=test_path)
+    assert compare_files(expected_path, test_path)

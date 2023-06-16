@@ -101,7 +101,7 @@ class DCATDataSet(BaseModel):
         return graph
 
     def add_vcard_info(
-        self, attribute_name, graph, subject, predicate, userinfo_format: str = None
+        self, attribute_name, graph, subject, predicate, userinfo_format: URIRef = None
     ) -> None:
         """
         Adds person information as URIRef or VCard node
@@ -111,9 +111,12 @@ class DCATDataSet(BaseModel):
             A class attribute to add to graph;
         graph: Graph
             A graph to add data
-        subject:
-        predicate:
-        userinfo_format:
+        subject: URIRef
+            A subject for the node to add
+        predicate: URIRef
+            Target predicate
+        userinfo_format: Optional, URIRef
+            a format of a user record node, VCARD.VCard if "VCARD.VCard" is specified, default is not defined
         Returns
         ------
         None
