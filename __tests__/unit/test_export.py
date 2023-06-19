@@ -67,13 +67,32 @@ def empty_graph():
     return graph
 
 
+@pytest.mark.parametrize(
+    "user_info_format,file_name",
+    [(None, "test_admin.ttl"), (VCARD.VCard, "test_admin_vcard.ttl")],
+)
+@patch("orcid.orcid_client.OrcidClient")
 @patch("cedar.client.CedarClient")
 @patch("dcat_exports.cedar_source_data.CedarAdminInstance.get_and_parse_instance")
-def test_export_admin_data(get_and_parse_instance, cedar_client, empty_graph, setup):
+def test_export_admin_data(
+    get_and_parse_instance,
+    cedar_client,
+    orcid_client,
+    empty_graph,
+    setup,
+    user_info_format,
+    file_name,
+):
     # Set Up
+    orcid_client.get_full_name.side_effect = [
+        "Maria de Vries",
+        "Jan de Vries",
+        "Test_Vorenaam Test_ Achternaam",
+        "Next test Value",
+    ]
     input_file = Path(INPUT_DIR, "test_adm_multiple_creators.json")
-    expected_path = Path(OUTPUT_DIR, "test_admin.ttl")
-    test_path = Path(OUTPUT_DIR, "output-test", "test_admin.ttl")
+    expected_path = Path(OUTPUT_DIR, file_name)
+    test_path = Path(OUTPUT_DIR, "output-test", file_name)
     get_and_parse_instance.return_value = empty_graph.parse(
         input_file, format="json-ld", publicID="https://orcid.org"
     )
@@ -85,9 +104,11 @@ def test_export_admin_data(get_and_parse_instance, cedar_client, empty_graph, se
         "theme": [],
     }
     # Act
-    actual = export_admin_data_to_dataset(admin_instance, TEST_ADMIN_ID, catalog_dict)
+    actual = export_admin_data_to_dataset(
+        admin_instance, TEST_ADMIN_ID, catalog_dict, orcid_client
+    )
     # Assert
-    actual.to_graph().serialize(destination=test_path)
+    actual.to_graph(userinfo_format=user_info_format).serialize(destination=test_path)
     assert compare_files(expected_path, test_path)
 
 
