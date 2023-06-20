@@ -21,7 +21,10 @@ class CedarEndPoints:
 class CedarClient(BasicAPIClient):
     """API client to connect to cedar API"""
 
-    def __init__(self, api_key: str, base_url: str = CedarEndPoints.base):
+    def __init__(
+        self, api_key: str, base_url: str = CedarEndPoints.base, query_limit: int = None
+    ):
+        self.query_limit = query_limit
         headers = {"Authorization": f"apiKey {api_key}"}
         super().__init__(base_url, headers)
 
@@ -49,13 +52,14 @@ class CedarClient(BasicAPIClient):
     def search_instances(self, template_id: str) -> List[str]:
         """Searches template instances belonging to a template with certain id
         returns a list of template instances ids"""
-        limit = 100  # default
+        if self.query_limit is None:
+            self.query_limit = 100  # Cedar default is 100, max is 500
         offset = 0
         response = self.get(
             path=CedarEndPoints.search,
             params={
                 "is_based_on": f"{CedarEndPoints.templates}/{template_id}",
-                "limit": limit,
+                "limit": self.query_limit,
                 "offset": offset,
             },
         )
@@ -63,12 +67,12 @@ class CedarClient(BasicAPIClient):
         total_count = response["totalCount"]
         result = [resource["@id"] for resource in response["resources"]]
         while len(result) < total_count:
-            offset += limit
+            offset += self.query_limit
             response = self.get(
                 path=CedarEndPoints.search,
                 params={
                     "is_based_on": f"{CedarEndPoints.templates}/{template_id}",
-                    "limit": limit,
+                    "limit": self.query_limit,
                     "offset": offset,
                 },
             )
