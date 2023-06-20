@@ -110,6 +110,7 @@ def find_target_predicate_chain_values(
 
 
 def user_id_to_vcard(creator_item, admin_instance_id, orcid_client):
+    creator_item = str(creator_item).rstrip(",.; ?/\\")
     if not ORCID_PATTERN.fullmatch(creator_item):
         logger.error(
             f"Unexpected creator value: {creator_item}, Admin Template Id: {admin_instance_id}"
@@ -119,7 +120,7 @@ def user_id_to_vcard(creator_item, admin_instance_id, orcid_client):
         full_name = Literal(full_name)
     else:
         full_name = BNode()
-    v_card = VCard(full_name=full_name, uid=creator_item)
+    v_card = VCard(full_name=full_name, uid=URIRef(creator_item))
     return v_card
 
 
