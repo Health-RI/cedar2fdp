@@ -72,6 +72,7 @@ DIST_MAPPING = {
 
 BY_COVID_URI = URIRef("https://covid19initiatives.health-ri.nl")
 
+# As per documentation https://support.orcid.org/hc/en-us/articles/360006897674-Structure-of-the-ORCID-Identifier
 # ORCID iDs are typically the 16-digit identifiers are assigned between 0000-0001-5000-0007 and 0000-0003-5000-0001,
 # or between 0009-0000-0000-0000 and 0009-0010-0000-0000. "X" can be at the end.
 ORCID_PATTERN = re.compile(
@@ -360,7 +361,9 @@ def build_export_graph(client, orcid_client):
 
 def export_dcat():
     config = yaml.safe_load(open("../config.yml", "r"))
-    client = CedarClient(api_key=config["cedar"]["apikey"])
+    client = CedarClient(
+        api_key=config["cedar"]["apikey"], query_limit=config["cedar"].get("limit")
+    )
     orcid = OrcidClient(token=config["orcid"]["token"], base_url="https://orcid.org")
     export = build_export_graph(client=client, orcid_client=orcid)
     export.serialize(
