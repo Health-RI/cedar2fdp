@@ -2,6 +2,7 @@ from typing import Iterator, List
 
 from rdflib import BNode, Graph, Literal, Namespace, URIRef
 from rdflib.namespace import RDF, RDFS
+from requests import Response
 
 from core.api_client import BasicAPIClient
 
@@ -20,7 +21,10 @@ class CedarEndPoints:
 class CedarClient(BasicAPIClient):
     """API client to connect to cedar API"""
 
-    def __init__(self, api_key: str, base_url: str = CedarEndPoints.base):
+    def __init__(
+        self, api_key: str, base_url: str = CedarEndPoints.base, query_limit: int = None
+    ):
+        self.query_limit = query_limit
         headers = {"Authorization": f"apiKey {api_key}"}
         super().__init__(base_url, headers)
 
@@ -30,24 +34,51 @@ class CedarClient(BasicAPIClient):
         response = self.get(path=path)
         return Template(src=response.json())
 
-    def get_template_instance(self, template_instance_id: str) -> str:
+    def get_template_instance_jsonld(self, template_instance_id: str) -> str:
         """Gets template instance as json-ld string"""
+        response = self.get_template_instance(template_instance_id)
+        return response.text
+
+    def get_template_instance(self, template_instance_id: str) -> Response:
+        """Gets template instance as Response"""
         url = (
             template_instance_id
             if template_instance_id.startswith("https://")
             else f"{CedarEndPoints.template_instances}/{template_instance_id}"
         )
         response = self.get(path=url)
-        return response.text
+        return response
 
     def search_instances(self, template_id: str) -> List[str]:
         """Searches template instances belonging to a template with certain id
         returns a list of template instances ids"""
+        if self.query_limit is None:
+            self.query_limit = 100  # Cedar default is 100, max is 500
+        offset = 0
         response = self.get(
             path=CedarEndPoints.search,
-            params={"is_based_on": f"{CedarEndPoints.templates}/{template_id}"},
+            params={
+                "is_based_on": f"{CedarEndPoints.templates}/{template_id}",
+                "limit": self.query_limit,
+                "offset": offset,
+            },
         )
-        return [resource["@id"] for resource in response.json()["resources"]]
+        response = response.json()
+        total_count = response["totalCount"]
+        result = [resource["@id"] for resource in response["resources"]]
+        while len(result) < total_count:
+            offset += self.query_limit
+            response = self.get(
+                path=CedarEndPoints.search,
+                params={
+                    "is_based_on": f"{CedarEndPoints.templates}/{template_id}",
+                    "limit": self.query_limit,
+                    "offset": offset,
+                },
+            )
+            response = response.json()
+            result += [resource["@id"] for resource in response["resources"]]
+        return result
 
 
 class Schema:

@@ -22,7 +22,7 @@ def post_cedar_instance_to_fdp(
 
     for index, resource in enumerate(cedar_template_instances):
         logger.info(f"{index}: {resource}")
-        tpl_instance = cedar_client.get_template_instance(resource)
+        tpl_instance = cedar_client.get_template_instance_jsonld(resource)
         foo = Graph().parse(data=tpl_instance, format="json-ld")
 
         # FIXME workarounds

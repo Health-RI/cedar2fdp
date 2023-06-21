@@ -1,0 +1,309 @@
+{
+  "@context": {
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "pav": "http://purl.org/pav/",
+    "schema": "http://schema.org/",
+    "oslc": "http://open-services.net/ns/core#",
+    "skos": "http://www.w3.org/2004/02/skos/core#",
+    "rdfs:label": {
+      "@type": "xsd:string"
+    },
+    "schema:isBasedOn": {
+      "@type": "@id"
+    },
+    "schema:name": {
+      "@type": "xsd:string"
+    },
+    "schema:description": {
+      "@type": "xsd:string"
+    },
+    "pav:derivedFrom": {
+      "@type": "@id"
+    },
+    "pav:createdOn": {
+      "@type": "xsd:dateTime"
+    },
+    "pav:createdBy": {
+      "@type": "@id"
+    },
+    "pav:lastUpdatedOn": {
+      "@type": "xsd:dateTime"
+    },
+    "oslc:modifiedBy": {
+      "@type": "@id"
+    },
+    "skos:notation": {
+      "@type": "xsd:string"
+    },
+    "Project Information": "https://schema.metadatacenter.org/properties/78d03cd1-21ef-41f2-ad99-69bd1118af13",
+    "Organisation Information": "https://schema.metadatacenter.org/properties/c2a7cc3a-8928-4ff0-bd2c-54033811bafe",
+    "Participant Information": "https://schema.metadatacenter.org/properties/83257c93-74ba-484b-bae7-8395ca8057a3",
+    "Funder Information": "https://schema.metadatacenter.org/properties/792cb92d-dd83-4b0c-b0ba-6392913c9b09",
+    "Read & Understood": "https://schema.metadatacenter.org/properties/a8130bbe-2dd5-42c5-9296-70017f883246",
+    "Other": "https://schema.metadatacenter.org/properties/e7f6696a-4e6b-491f-9429-23037579452e"
+  },
+  "Project Information": {
+    "@context": {
+      "Project Names1": "https://schema.metadatacenter.org/properties/9e8b66fb-3f8c-4edc-b2d6-099d398b0bfc",
+      "Project Website1": "https://schema.metadatacenter.org/properties/68e62e42-b3f3-44c9-a100-ce72dbb27075"
+    },
+    "Project Names1": {
+      "@context": {
+        "Project Acronym": "https://schema.metadatacenter.org/properties/2134edcc-e906-41b5-bc3b-f00ca9952fec",
+        "Project Title1": "https://schema.metadatacenter.org/properties/a48e48af-7e98-4174-9d1d-5a7b7cf0b788"
+      },
+      "Project Acronym": {
+        "@context": {
+          "Project Acronym": "https://schema.metadatacenter.org/properties/c7579ce8-10ec-4806-b70e-198f656f3ee0"
+        },
+        "Project Acronym": {
+          "@value": null
+        },
+        "@id": "https://repo.metadatacenter.org/template-element-instances/fde9d92a-1d4e-40e6-b9e0-ae3c7e03f091"
+      },
+      "Project Title1": [
+        {
+          "@context": {
+            "Language": "http://def.isotc211.org/iso19115/2003/IdentificationInformation#MD_DataIdentification.language",
+            "Project Title": "http://purl.org/dc/elements/1.1/title"
+          },
+          "Language": {
+            "@id": "https://www.omg.org/spec/LCC/Languages/LaISO639-1-LanguageCodes/en",
+            "rdfs:label": "en"
+          },
+          "Project Title": {
+            "@value": "TEST-dummy test admin template"
+          },
+          "@id": "https://repo.metadatacenter.org/template-element-instances/414dd938-cf65-470c-a13a-daf496519b0e"
+        },
+        {
+          "@context": {
+            "Language": "http://def.isotc211.org/iso19115/2003/IdentificationInformation#MD_DataIdentification.language",
+            "Project Title": "http://purl.org/dc/elements/1.1/title"
+          },
+          "Language": {
+            "@id": "https://www.omg.org/spec/LCC/Languages/LaISO639-1-LanguageCodes/nl",
+            "rdfs:label": "nl"
+          },
+          "Project Title": {
+            "@value": "TEST-andere test naam"
+          }
+        }
+      ],
+      "@id": "https://repo.metadatacenter.org/template-element-instances/8066c3fc-e076-491b-81de-5e04f807845d"
+    },
+    "Project Website1": [
+      {
+        "@context": {
+          "Project Website": "https://schema.metadatacenter.org/properties/bf95433c-3e9a-457f-8320-6ecdb5bf4ac0"
+        },
+        "Project Website": {},
+        "@id": "https://repo.metadatacenter.org/template-element-instances/4ad803ff-fa33-45ed-ab7d-bb426c8fb542"
+      }
+    ],
+    "@id": "https://repo.metadatacenter.org/template-element-instances/248ba0b6-cfe8-40e1-a2c0-f57c134a66e5"
+  },
+  "Organisation Information": {
+    "@context": {
+      "Lead Institution1": "https://schema.metadatacenter.org/properties/bd73304a-252c-49be-84b1-ef7dd9fc2e9e",
+      "Partner Institution": "https://schema.metadatacenter.org/properties/28deabd4-f5ae-4685-92f8-113c547b92e7"
+    },
+    "Lead Institution1": {
+      "@context": {
+        "Country": "https://schema.metadatacenter.org/properties/465620b8-764f-47ea-83b7-7192c9045f7a",
+        "Name of the Lead Insitution": "https://schema.metadatacenter.org/properties/9f774ee2-3723-498e-81b6-d9f30017d07e",
+        "Lead Institution ROR Reference": "https://schema.metadatacenter.org/properties/853f58fb-c9de-4907-bf31-ddd282a871b2",
+        "Other Lead Insitution": "https://schema.metadatacenter.org/properties/18e1afb0-a1a3-41b7-b353-651ff629e191",
+        "Other Country": "https://schema.metadatacenter.org/properties/cd0ead0e-809f-4649-b766-5323a79fe131"
+      },
+      "Country": {
+        "@id": "http://purl.obolibrary.org/obo/MVC_0000306",
+        "rdfs:label": "Netherlands"
+      },
+      "Name of the Lead Insitution": {
+        "@id": "http://purl.org/zonmw/generic/10039",
+        "rdfs:label": "GO FAIR Foundation"
+      },
+      "Lead Institution ROR Reference": {
+        "@value": "fdhdfh"
+      },
+      "Other Lead Insitution": {
+        "@value": "dummy institute"
+      },
+      "Other Country": {
+        "@value": null
+      },
+      "@id": "https://repo.metadatacenter.org/template-element-instances/e61d1045-4b0a-43a9-b35f-97caaec4add9"
+    },
+    "Partner Institution": [
+      {
+        "@context": {
+          "Name of Partner Institution": "https://schema.metadatacenter.org/properties/a569ccb0-c712-4b6b-b8cf-124b16743b2b",
+          "Country": "https://schema.metadatacenter.org/properties/4f1713fd-43f4-4c96-9b46-f2356f5306c5",
+          "Project Partner Institution ROR Reference": "https://schema.metadatacenter.org/properties/056922d7-424b-4f6f-ba27-2a238b7af8d9",
+          "Other Partner Institution": "https://schema.metadatacenter.org/properties/b51b031d-bce1-4277-8ef9-47acbaf54fd9",
+          "Other Country": "https://schema.metadatacenter.org/properties/4c4378ca-7bdd-40b9-bd86-3b85527c4570"
+        },
+        "Name of Partner Institution": {},
+        "Country": {},
+        "Project Partner Institution ROR Reference": {
+          "@value": null
+        },
+        "Other Partner Institution": {
+          "@value": null
+        },
+        "Other Country": {
+          "@value": null
+        },
+        "@id": "https://repo.metadatacenter.org/template-element-instances/52f73099-ace6-4e22-9215-462156720b69"
+      }
+    ],
+    "@id": "https://repo.metadatacenter.org/template-element-instances/9e68c061-e6b5-491e-bc8a-10670804f99b"
+  },
+  "Participant Information": {
+    "@context": {
+      "Principal Investigator": "https://schema.metadatacenter.org/properties/49cd19d7-5543-4ff5-9861-20e74ce7cfaa",
+      "Data Steward": "https://schema.metadatacenter.org/properties/0b8c1b95-f6b1-4bcb-ad6f-3923930c314f",
+      "Project Participant": "https://schema.metadatacenter.org/properties/e18728bf-f06b-4701-9284-8f58d951ed6a"
+    },
+    "Principal Investigator": {
+      "@context": {
+        "Principle Investigator ORCID": "https://schema.metadatacenter.org/properties/ae358774-2e66-40e3-8856-d6d373a180f5"
+      },
+      "Principle Investigator ORCID": {
+        "@id": "https://example.com/orcid_id"
+      },
+      "@id": "https://repo.metadatacenter.org/template-element-instances/3db85b21-f5e1-488a-bfed-ff759ccb8afe"
+    },
+    "Data Steward": [
+      {
+        "@context": {
+          "Data Steward ORCID": "https://schema.metadatacenter.org/properties/ddb6a1ab-8ea7-43ce-9a7e-ba4d33f3abb9"
+        },
+        "Data Steward ORCID": {},
+        "@id": "https://repo.metadatacenter.org/template-element-instances/804ee005-8a64-40d1-b390-57ec3d54d33e"
+      }
+    ],
+    "Project Participant": [
+      {
+        "@context": {
+          "Project Participant ORCID": "https://schema.metadatacenter.org/properties/9d7a3537-78c4-4471-a508-c33ce83437fa",
+          "Contributor Type": "https://schema.metadatacenter.org/properties/bca1a8e9-0655-4902-9eed-612847ae67f3",
+          "Other Role": "https://schema.metadatacenter.org/properties/7ba5dfe4-ef7d-46db-9682-762c22709233"
+        },
+        "Project Participant ORCID": {},
+        "Contributor Type": {},
+        "Other Role": {
+          "@value": null
+        },
+        "@id": "https://repo.metadatacenter.org/template-element-instances/f7a363ee-218b-4d74-8306-442788954304"
+      }
+    ],
+    "@id": "https://repo.metadatacenter.org/template-element-instances/19754432-c6c4-456c-ab86-7508d36b1298"
+  },
+  "Funder Information": {
+    "@context": {
+      "Funder": "https://schema.metadatacenter.org/properties/9f33068f-edd6-4fb7-a901-d482a0e6a7b2",
+      "Funder Project Identifier": "https://schema.metadatacenter.org/properties/84e162fa-f1c7-4da4-8dcf-8534c46e299e",
+      "Project Dates": "https://schema.metadatacenter.org/properties/44d6b2d1-24fa-4ee2-85ff-c9bc8565bddc"
+    },
+    "Funder": [
+      {
+        "@context": {
+          "Funder ROR Reference": "https://schema.metadatacenter.org/properties/41a72a33-f1c7-4c0b-8b26-129bc1793ea8",
+          "Funder Name": "https://schema.metadatacenter.org/properties/f8c5f87a-a815-48d0-98b0-451ed57c11b9",
+          "Other Funder Name": "https://schema.metadatacenter.org/properties/659e8405-f133-4c1b-b043-292540bc4f73"
+        },
+        "Funder ROR Reference": {
+          "@value": "https://ror.org/test_ror_ref"
+        },
+        "Funder Name": {},
+        "Other Funder Name": {
+          "@value": null
+        },
+        "@id": "https://repo.metadatacenter.org/template-element-instances/00dc11ad-29bd-4690-b68e-8b695e528290"
+      }
+    ],
+    "Funder Project Identifier": {
+      "@context": {
+        "Funder Project Identifier": "https://schema.metadatacenter.org/properties/74b66558-1b2c-470f-a4f0-c52a6a69a91f"
+      },
+      "Funder Project Identifier": {
+        "@value": "test_fp_identifier"
+      },
+      "@id": "https://repo.metadatacenter.org/template-element-instances/e7a45e59-96d0-4d5a-9744-4d7371cee7ec"
+    },
+    "Project Dates": {
+      "@context": {
+        "(Expected) Start Date of Project": "https://schema.metadatacenter.org/properties/bbca9d8b-a95d-4239-a259-fb40164e5715",
+        "(Expected) End Date of Project": "https://schema.metadatacenter.org/properties/e6ba0001-590d-4400-a296-683dee6bf72a",
+        "Project Duration (in Months)": "https://schema.metadatacenter.org/properties/7dc30740-20b5-4dfb-8214-2b4e983197af"
+      },
+      "(Expected) Start Date of Project": {
+        "@value": "2023-05-01",
+        "@type": "xsd:date"
+      },
+      "(Expected) End Date of Project": {
+        "@value": "2023-06-01",
+        "@type": "xsd:date"
+      },
+      "Project Duration (in Months)": {
+        "@value": "1",
+        "@type": "xsd:decimal"
+      },
+      "@id": "https://repo.metadatacenter.org/template-element-instances/0ba188f3-12c7-412b-b202-c0970768b222"
+    },
+    "@id": "https://repo.metadatacenter.org/template-element-instances/a9da7256-c8e4-4e4b-aaf6-65fb64f86ea8"
+  },
+  "Read & Understood": {
+    "@context": {
+      "Read & Understood": "https://schema.metadatacenter.org/properties/95fb84a4-78bc-4922-9fa5-485ec44638af"
+    },
+    "Read & Understood": [
+      {
+        "@value": "I have read & understood"
+      }
+    ],
+    "@id": "https://repo.metadatacenter.org/template-element-instances/91deab80-f7d6-44ef-a38e-b03f3a6f2fd2"
+  },
+  "Other": {
+    "@context": {
+      "ORCID of Person completing this Form": "https://schema.metadatacenter.org/properties/6455acbe-f02d-4628-8748-b3e98649076c",
+      "Community GUPRI": "https://schema.metadatacenter.org/properties/4dc46067-1875-4d0f-9523-0c6a0d388a89"
+    },
+    "ORCID of Person completing this Form": [
+      {
+        "@context": {
+          "ORCID of Person completing this Form": "https://schema.metadatacenter.org/properties/fe7e40b0-8c55-4221-bc82-399e80d19846"
+        },
+        "ORCID of Person completing this Form": {
+          "@id": "0000-0001-5878-7481"
+        },
+        "@id": "https://repo.metadatacenter.org/template-element-instances/40a8d538-ec6a-47a4-8b4b-01aef7e9cbce"
+      }
+    ],
+    "Community GUPRI": {
+      "@context": {
+        "Community GUPRI that created this Form": "https://schema.metadatacenter.org/properties/6bb11ab0-daf7-4991-b705-86e7e738329b",
+        "Community GUPRI that is using this Form": "https://schema.metadatacenter.org/properties/139f40a2-ace5-4c6a-8032-e645c5b43021"
+      },
+      "Community GUPRI that created this Form": {
+        "@value": "http://server.nanopubs.lod.labs.vu.nl/RA_2uIT4u-UqqiFcHiQVjVJ6LQmXG_S4oirXWUJBsLKPc"
+      },
+      "Community GUPRI that is using this Form": {
+        "@value": "http://server.nanopubs.lod.labs.vu.nl/RA_2uIT4u-UqqiFcHiQVjVJ6LQmXG_S4oirXWUJBsLKPc"
+      },
+      "@id": "https://repo.metadatacenter.org/template-element-instances/9b7b5e09-ddf8-48f4-9698-3660ce675a65"
+    },
+    "@id": "https://repo.metadatacenter.org/template-element-instances/9ca18edd-6c56-480d-8f04-e946064cd111"
+  },
+  "schema:isBasedOn": "https://repo.metadatacenter.org/templates/337cb6f3-eef6-4b2f-9ffb-3f6d6cc9b9ac",
+  "schema:name": "COVID-19_Project-Admin_V4 metadata",
+  "schema:description": "A project admin metadata template for COVID 19 projects funded by ZonMw",
+  "pav:createdOn": "2023-05-19T00:54:26-07:00",
+  "pav:createdBy": "https://metadatacenter.org/users/de71c51f-5cfa-4dd8-a7d3-c53b7cffd01f",
+  "pav:lastUpdatedOn": "2023-06-09T01:35:47-07:00",
+  "oslc:modifiedBy": "https://metadatacenter.org/users/de71c51f-5cfa-4dd8-a7d3-c53b7cffd01f",
+  "@id": "https://repo.metadatacenter.org/template-instances/d832e5e6-89b9-4d35-a570-15dd15a6792a"
+}
