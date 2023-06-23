@@ -71,6 +71,7 @@ DIST_MAPPING = {
     "http://www.w3.org/ns/dcat#accessURL": ("http://www.w3.org/ns/dcat#accessURL",),
 }
 
+# As per documentation https://support.orcid.org/hc/en-us/articles/360006897674-Structure-of-the-ORCID-Identifier
 # ORCID iDs are typically the 16-digit identifiers are assigned between 0000-0001-5000-0007 and 0000-0003-5000-0001,
 # or between 0009-0000-0000-0000 and 0009-0010-0000-0000. "X" can be at the end.
 ORCID_PATTERN = re.compile(
@@ -115,6 +116,7 @@ def find_target_predicate_chain_values(
 
 
 def user_id_to_vcard(creator_item, admin_instance_id, orcid_client):
+    creator_item = str(creator_item).rstrip(",.; ?/\\")
     if not ORCID_PATTERN.fullmatch(creator_item):
         logger.error(
             f"Unexpected creator value: {creator_item}, Admin Template Id: {admin_instance_id}"
@@ -124,7 +126,7 @@ def user_id_to_vcard(creator_item, admin_instance_id, orcid_client):
         full_name = Literal(full_name)
     else:
         full_name = BNode()
-    v_card = VCard(full_name=full_name, uid=creator_item)
+    v_card = VCard(full_name=full_name, uid=URIRef(creator_item))
     return v_card
 
 
@@ -386,7 +388,9 @@ def build_export_graph(client, orcid_client, portal_client, portal_url):
 
 def export_dcat():
     config = yaml.safe_load(open("../config.yml", "r"))
-    client = CedarClient(api_key=config["cedar"]["apikey"])
+    client = CedarClient(
+        api_key=config["cedar"]["apikey"], query_limit=config["cedar"].get("limit")
+    )
     orcid = OrcidClient(token=config["orcid"]["token"], base_url="https://orcid.org")
     portal_url = config["covid_portal"]["base_url"]
     portal_client = PortalClient(

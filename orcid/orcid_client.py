@@ -16,6 +16,7 @@ class OrcidClient(BasicAPIClient):
     def __init__(self, token, base_url):
         self.token = token
         headers = self._get_headers()
+        self.saved_names = {}
         super().__init__(base_url, headers)
 
     def _get_headers(self):
@@ -31,10 +32,13 @@ class OrcidClient(BasicAPIClient):
 
     def get_full_name(self, user_id) -> Union[str, None]:
         """Parses first and last names out of ORC ID record"""
+        if user_id in self.saved_names.keys():
+            return self.saved_names[user_id]
         try:
             orcid_data = self.get_orcid_record_info(user_id)
         except (SystemExit, JSONDecodeError):
             logger.warning(f"User {user_id} not found in ORCID system.")
+            self.saved_names[user_id] = None
             return None
         name_data = orcid_data["person"]["name"]
         full_name = None
@@ -50,6 +54,8 @@ class OrcidClient(BasicAPIClient):
             last_name = last_name.get("value", "")
         else:
             logger.warning(f"Last name is not provided by user {first_name} {user_id}")
+            self.saved_names[user_id] = first_name
             return first_name
         full_name = f"{first_name} {last_name}"
+        self.saved_names[user_id] = full_name
         return full_name
