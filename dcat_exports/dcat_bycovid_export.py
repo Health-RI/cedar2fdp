@@ -15,7 +15,8 @@ from dcat_exports.export_controller import (
     ExportController,
 )
 from dcat_exports.export_utils import get_object_recursively
-from models.bycovid_models import DCATDataSet
+from models.bycovid_models import VCARD, DCATDataSet, VCard
+from orcid.orcid_client import OrcidClient
 
 logger = get_logger()
 
@@ -109,7 +110,22 @@ def find_target_predicate_chain_values(
             export.add((target_subject, URIRef(target_predicate), node))
 
 
-def export_admin_data_to_dataset(admin_instance, subject, catalog_dict):
+def user_id_to_vcard(creator_item, admin_instance_id, orcid_client):
+    creator_item = str(creator_item).rstrip(",.; ?/\\")
+    if not ORCID_PATTERN.fullmatch(creator_item):
+        logger.error(
+            f"Unexpected creator value: {creator_item}, Admin Template Id: {admin_instance_id}"
+        )
+    full_name = orcid_client.get_full_name(creator_item)
+    if full_name:
+        full_name = Literal(full_name)
+    else:
+        full_name = BNode()
+    v_card = VCard(full_name=full_name, uid=URIRef(creator_item))
+    return v_card
+
+
+def export_admin_data_to_dataset(admin_instance, subject, catalog_dict, orcid_client):
     title = admin_instance.get_title(
         ADMIN_TEMPLATE_MAPPING["http://purl.org/dc/terms/title"],
         language_predicate=ADMIN_TEMPLATE_MAPPING["language"][-1],
@@ -117,13 +133,11 @@ def export_admin_data_to_dataset(admin_instance, subject, catalog_dict):
     creator = admin_instance.get_attribute(
         ADMIN_TEMPLATE_MAPPING["http://purl.org/dc/terms/creator"]
     )
-    for creator_item in creator:
-        if not ORCID_PATTERN.fullmatch(creator_item) and not isinstance(
-            creator_item, BNode
-        ):
-            logger.error(
-                f"Unexpected creator value: {creator_item}, Admin Template Id: {admin_instance.admin_instance_id}"
-            )
+    # convert to VCard
+    creator = [
+        user_id_to_vcard(creator_item, admin_instance.admin_instance_id, orcid_client)
+        for creator_item in creator
+    ]
 
     dates = admin_instance.get_pared_attributes(
         ADMIN_TEMPLATE_MAPPING["start"], ADMIN_TEMPLATE_MAPPING["end"][-1]
@@ -135,6 +149,10 @@ def export_admin_data_to_dataset(admin_instance, subject, catalog_dict):
     primary_contact = admin_instance.get_attribute(
         ADMIN_TEMPLATE_MAPPING["http://www.w3.org/ns/dcat#contactPoint"]
     )
+    primary_contact = [
+        user_id_to_vcard(contact, admin_instance.admin_instance_id, orcid_client)
+        for contact in primary_contact
+    ]
 
     publisher = catalog_dict["publisher"]
     if pd.notnull(publisher):
@@ -169,8 +187,9 @@ def write_datasets(
     client: CedarClient,
     export: Graph,
     map_table: pd.DataFrame,
+    orcid_client: OrcidClient,
 ) -> None:
-
+    export.bind("v", VCARD)
     map_table = map_table[
         [
             "admin_instance_id",
@@ -204,10 +223,12 @@ def write_datasets(
         ds_list_of_records = ds_table.to_dict("records")
         for record in ds_list_of_records:
             subject = URIRef(record["admin_graph_id"])
-            dataset = export_admin_data_to_dataset(admin_instance, subject, record)
+            dataset = export_admin_data_to_dataset(
+                admin_instance, subject, record, orcid_client
+            )
             if str(dataset.title).startswith("TEST-"):
                 continue
-            export += dataset.to_graph()
+            export += dataset.to_graph(userinfo_format=VCARD.VCard)
 
             catalog_ids = ds_table["content_graph_id"].values
             if catalog_ids.shape[0] > 0 and pd.notnull(catalog_ids[0]):
@@ -298,7 +319,7 @@ def write_catalogs(cedar_export, export_graph):
         export_graph.add((BY_COVID_URI, DCAT.catalog, subject))
 
 
-def build_export_graph(client):
+def build_export_graph(client, orcid_client):
     export_graph = Graph()
     # bind namespaces
     export_graph.bind("dcat", DCAT)
@@ -328,6 +349,7 @@ def build_export_graph(client):
         client=client,
         export=export_graph,
         map_table=cedar_export.overall_mapping,
+        orcid_client=orcid_client,
     )
 
     write_dist(
@@ -342,7 +364,8 @@ def export_dcat():
     client = CedarClient(
         api_key=config["cedar"]["apikey"], query_limit=config["cedar"].get("limit")
     )
-    export = build_export_graph(client=client)
+    orcid = OrcidClient(token=config["orcid"]["token"], base_url="https://orcid.org")
+    export = build_export_graph(client=client, orcid_client=orcid)
     export.serialize(
         destination=f"../example-output/{datetime.now().date()}_output.ttl"
     )
