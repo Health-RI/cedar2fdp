@@ -155,7 +155,7 @@ class ExportController:
             self.overall_mapping, data_frame, how="outer", on="dataset_id"
         )
 
-    def merge_content_data(self):
+    def merge_content_data(self, portal_df):
         """For each instance of Content Template searches for focus area, keywords, themes and description"""
         content_data_dicts = []
         for content_instance_id in self.content_ids:
@@ -214,9 +214,7 @@ class ExportController:
         )
         # Create a table with admin instances and merge other mappings table
         admin_df = pd.DataFrame(data={"admin_instance_id": self.admin_ids})
-        admin_df["admin_graph_id"] = admin_df.index.map(
-            lambda x: f"http://example.com/dataset/{str(x)}"
-        )
+        admin_df = pd.merge(admin_df, portal_df, how="left", on="admin_instance_id")
         combined_dataframe = pd.merge(
             admin_df, combined_dataframe, how="outer", on="admin_instance_id"
         )
@@ -264,10 +262,6 @@ class ExportController:
                     f"Content instance {record['content_instance_id']} refers to "
                     f"{record['admin_instance_id']}, please check"
                 )
-        # no_admin = dataframe.loc[pd.isnull(dataframe["admin_instance_id"])]
-        # if not no_admin.empty:
-        #     content_templ = ",\n".join(no_admin["content_instance_id"].values)
-        #     logger.warning(f"Following Content templates: {content_templ}")
 
     @staticmethod
     def _validate_admin_mapping(dataframe):
