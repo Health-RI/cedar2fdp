@@ -82,7 +82,7 @@ ORCID_PATTERN = re.compile(
 
 class ByCovidConfig(metaclass=CedarConfig):
     admin_templ_id = "337cb6f3-eef6-4b2f-9ffb-3f6d6cc9b9ac"
-    catalog_templ_id = "28d58a30-1a42-4715-a742-d2f46690563e"
+    catalog_templ_id = "2ef5e58f-0770-484d-80ae-23768cc1fda2"
     content_templ_id = "908e33e2-9485-4a93-ab22-1688dc5819dc"
     dataset_templ_id = "de169781-7f75-4aef-a0cb-ac435fe3a4c7"
     distribution_templ_id = "22925909-9fb2-4ac8-a986-6db5ae7049e7"
@@ -248,16 +248,23 @@ def write_dist(client, export, mapping_table):
         & pd.notnull(mapping_table["distribution_id"])
         & (mapping_table["distribution_id"].astype(str) != "")
     ][["admin_graph_id", "distribution_id"]].drop_duplicates()
+    distr_df["count"] = distr_df.groupby(["admin_graph_id"], dropna=False)[
+        "distribution_id"
+    ].transform("nunique")
+    distr_df["subject"] = distr_df["admin_graph_id"].apply(
+        lambda x: f"{x}-distribution" if "#" in x else f"{x}#distribution"
+    )
+
+    distr_df.loc[(distr_df["count"].astype(int) > 1), "subject"] = distr_df[
+        "subject"
+    ].astype(str) + distr_df["count"].astype(str)
     distr_to_admin = pd.Series(
-        distr_df["admin_graph_id"].values, index=distr_df["distribution_id"]
+        distr_df["subject"].values, index=distr_df["distribution_id"]
     ).to_dict()
-    # todo : several distr per project
-    for instance_id, admin_instance in distr_to_admin.items():
-        if "#" in admin_instance:
-            subject = URIRef(f"{admin_instance}-distribution")
-        else:
-            subject = URIRef(f"{admin_instance}#distribution")
-        export.add((URIRef(admin_instance), DCAT.distribution, subject))
+    for instance_id, subject in distr_to_admin.items():
+        dataset_link = URIRef(subject.split("distribution")[0].rstrip("#-"))
+        subject = URIRef(subject)
+        export.add((dataset_link, DCAT.distribution, subject))
         dist_instance = client.get_template_instance_jsonld(instance_id)
         dist_graph = Graph().parse(data=dist_instance, format="json-ld")
         export.add((subject, RDF.type, DCAT.Distribution))

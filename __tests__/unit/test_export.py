@@ -118,7 +118,9 @@ def test_top_level_bycovid(empty_graph, setup):
     expected_path = Path(OUTPUT_DIR, "test_root_catalog.ttl")
     test_path = Path(OUTPUT_DIR, "output-test", "test_root_catalog.ttl")
     # Act
-    write_top_level(empty_graph)
+    write_top_level(
+        empty_graph, portal_url=URIRef("https://covid19initiatives.health-ri.nl")
+    )
     empty_graph.serialize(destination=test_path)
     # Assert
     assert compare_files(expected_path, test_path)
