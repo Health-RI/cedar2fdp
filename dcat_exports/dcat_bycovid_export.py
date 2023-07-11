@@ -257,10 +257,13 @@ def write_dist(client, export, mapping_table):
     distr_df["subject"] = distr_df["admin_graph_id"].apply(
         lambda x: f"{x}-distribution" if "#" in x else f"{x}#distribution"
     )
-
-    distr_df.loc[(distr_df["count"].astype(int) > 1), "subject"] = distr_df[
-        "subject"
-    ].astype(str) + distr_df["count"].astype(str)
+    distr_df.loc[(distr_df["count"].astype(int) > 1), "subject"] = (
+        distr_df["subject"].astype(str)
+        + "-"
+        + distr_df.groupby(["admin_graph_id"])["distribution_id"]
+        .transform("cumcount")
+        .astype(str)
+    )
     distr_to_admin = pd.Series(
         distr_df["subject"].values, index=distr_df["distribution_id"]
     ).to_dict()

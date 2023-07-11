@@ -1,7 +1,9 @@
 import difflib
+import json
 from pathlib import Path
 from unittest.mock import patch
 
+import pandas as pd
 import pytest
 from colorama import Fore
 from freezegun import freeze_time
@@ -10,6 +12,7 @@ from rdflib import DCAT, DCTERMS, RDF, BNode, Graph, Literal, URIRef
 from dcat_exports.cedar_source_data import CedarAdminInstance
 from dcat_exports.dcat_bycovid_export import (
     export_admin_data_to_dataset,
+    write_dist,
     write_top_level,
 )
 from models.bycovid_models import VCARD, DCATDataSet, VCard
@@ -248,4 +251,119 @@ def test_user_info_uriref(user_info, info_type, expected_file, empty_graph):
         userinfo_format=info_type,
     )
     empty_graph.serialize(destination=test_path)
+    assert compare_files(expected_path, test_path)
+
+
+def get_template_by_id(*args, **kwargs):
+    templ_id = args[0].split("/")[-1]
+    path = Path(INPUT_DIR, f"distr_test{templ_id}.json")
+    with open(path, "r") as t_file:
+        template_json_ld = json.loads(t_file.read())
+    return template_json_ld
+
+
+@patch("cedar.client.CedarClient")
+def test_write_distr(client, empty_graph):
+    """Tests multiple distributions per project"""
+    # Set Up
+    expected_path = Path(OUTPUT_DIR, "test_distribution.ttl")
+    test_path = Path(OUTPUT_DIR, "output-test", "test_distribution.ttl")
+    export = empty_graph
+    export.add((URIRef("https://example.com/test_project_1"), RDF.type, DCAT.Dataset))
+    export.add(
+        (
+            URIRef("https://example.com/test_project_1"),
+            DCTERMS.title,
+            Literal("Project1"),
+        )
+    )
+    export.add((URIRef("https://example.com/test_project_2"), RDF.type, DCAT.Dataset))
+    export.add(
+        (
+            URIRef("https://example.com/test_project_2"),
+            DCTERMS.title,
+            Literal("Project2"),
+        )
+    )
+
+    data = {
+        "admin_instance_id": [
+            "https://example.com/test_id_1",
+            "https://example.com/test_id_1",
+            "https://example.com/test_id_2",
+        ],
+        "admin_graph_id": [
+            "https://example.com/test_project_1",
+            "https://example.com/test_project_1",
+            "https://example.com/test_project_2",
+        ],
+        "catalog_instance_id": [None, None, None],
+        "description": [
+            "Test description 1",
+            "Test description 1",
+            "Test description 2",
+        ],
+        "publisher": [
+            "https://example.com/publisher_id_1",
+            "https://example.com/publisher_id_1",
+            "https://example.com/publisher_id_2",
+        ],
+        "dataset_id": [
+            "https://example.com/dataset_id_1",
+            "https://example.com/dataset_id_1",
+            "https://example.com/dataset_id_2",
+        ],
+        "distribution_id": [
+            "https://example.com/distr_id_1",
+            "https://example.com/distr_id_2",
+            "https://example.com/distr_id_3",
+        ],
+        "content_instance_id": [
+            "https://example.com/content_id_1",
+            "https://example.com/content_id_1",
+            "https://example.com/content_id_2",
+        ],
+        "keyword": [
+            ["national", "hospital care", "COVID-19 phase"],
+            ["national", "hospital care", "COVID-19 phase"],
+            ["national", "hospital care", "COVID-19 phase"],
+        ],
+        "focus_area_id": [
+            "http://purl.org/zonmw/covid19/10228",
+            "http://purl.org/zonmw/covid19/10228",
+            "http://purl.org/zonmw/covid19/10228",
+        ],
+        "focus_area": [
+            "care and prevention - organisation of care and prevention",
+            "care and prevention - organisation of care and prevention",
+            "care and prevention - organisation of care and prevention",
+        ],
+        "content_title": ["Content title 1", "Content title 1", "Content title 2"],
+        "theme": [
+            ["http://purl.org/zonmw/covid19/10007"],
+            ["http://purl.org/zonmw/covid19/10007"],
+            ["http://purl.org/zonmw/covid19/10006"],
+        ],
+        "count": [0, 0, 0],
+        "content_graph_id": [
+            URIRef(
+                "https://covid19initiatives.health-ri.nl/p/ProjectOverview?focusarea=http://purl.org/zonmw/covid19"
+                "/10228"
+            ),
+            URIRef(
+                "https://covid19initiatives.health-ri.nl/p/ProjectOverview?focusarea=http://purl"
+                ".org/zonmw/covid19/10228"
+            ),
+            URIRef(
+                "https://covid19initiatives.health-ri.nl/p/ProjectOverview?focusarea=http://purl"
+                ".org/zonmw/covid19/10228"
+            ),
+        ],
+    }
+
+    mapping_table = pd.DataFrame.from_dict(data)
+    client.get_template_instance_jsonld.side_effect = get_template_by_id
+    write_dist(client, export=export, mapping_table=mapping_table)
+    # Assert
+    export.serialize(destination=test_path)
     assert compare_files(expected_path, test_path)
