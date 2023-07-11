@@ -22,13 +22,13 @@ from orcid.orcid_client import OrcidClient
 logger = get_logger()
 
 ADMIN_TEMPLATE_MAPPING = {
-    "http://purl.org/dc/terms/title": (
+    DCTERMS.title: (
         "https://schema.metadatacenter.org/properties/78d03cd1-21ef-41f2-ad99-69bd1118af13",
         "https://schema.metadatacenter.org/properties/9e8b66fb-3f8c-4edc-b2d6-099d398b0bfc",
         "https://schema.metadatacenter.org/properties/a48e48af-7e98-4174-9d1d-5a7b7cf0b788",
         "http://purl.org/dc/elements/1.1/title",
     ),
-    "http://purl.org/dc/terms/creator": (
+    DCTERMS.creator: (
         "https://schema.metadatacenter.org/properties/e7f6696a-4e6b-491f-9429-23037579452e",
         "https://schema.metadatacenter.org/properties/6455acbe-f02d-4628-8748-b3e98649076c",
         "https://schema.metadatacenter.org/properties/fe7e40b0-8c55-4221-bc82-399e80d19846",
@@ -39,7 +39,7 @@ ADMIN_TEMPLATE_MAPPING = {
         "https://schema.metadatacenter.org/properties/a48e48af-7e98-4174-9d1d-5a7b7cf0b788",
         "http://def.isotc211.org/iso19115/2003/IdentificationInformation#MD_DataIdentification.language",
     ),
-    "http://www.w3.org/ns/dcat#contactPoint": (
+    DCAT.contactPoint: (
         "https://schema.metadatacenter.org/properties/83257c93-74ba-484b-bae7-8395ca8057a3",
         "https://schema.metadatacenter.org/properties/49cd19d7-5543-4ff5-9861-20e74ce7cfaa",
         "https://schema.metadatacenter.org/properties/ae358774-2e66-40e3-8856-d6d373a180f5",
@@ -62,13 +62,13 @@ ADMIN_TEMPLATE_MAPPING = {
 
 DIST_MAPPING = {
     # "datasetDate": ("http://purl.org/dc/terms/issued"),
-    "http://purl.org/dc/terms/format": ("http://purl.org/dc/terms/conformsTo",),
+    DCTERMS.format: ("http://purl.org/dc/terms/conformsTo",),
     # "distributionMediaType": "http://www.w3.org/ns/dcat#mediaType",
-    "http://purl.org/dc/terms/title": ("http://purl.org/dc/terms/title",),
+    DCTERMS.title: ("http://purl.org/dc/terms/title",),
     # "accessService": "http://www.w3.org/ns/dcat#accessService",
-    "http://purl.org/dc/terms/description": ("http://purl.org/dc/terms/description",),
-    "http://purl.org/dc/terms/license": ("http://purl.org/dc/terms/license",),
-    "http://www.w3.org/ns/dcat#accessURL": ("http://www.w3.org/ns/dcat#accessURL",),
+    DCTERMS.description: ("http://purl.org/dc/terms/description",),
+    DCTERMS.license: ("http://purl.org/dc/terms/license",),
+    DCAT.accessURL: ("http://www.w3.org/ns/dcat#accessURL",),
 }
 
 # As per documentation https://support.orcid.org/hc/en-us/articles/360006897674-Structure-of-the-ORCID-Identifier
@@ -119,7 +119,7 @@ def user_id_to_vcard(creator_item, admin_instance_id, orcid_client):
     creator_item = str(creator_item).rstrip(",.; ?/\\")
     # To fix entries like https://orcid.org/my-orcid?orcid=000X-XXXX-XXXX-XXXX
     if "?orcid=" in creator_item:
-        creator_item = "https://orcid.org/" + creator_item.split("=")[-1]
+        creator_item = "https://orcid.org/" + creator_item.rsplit("=", maxsplit=1)[-1]
     if not ORCID_PATTERN.fullmatch(creator_item):
         logger.error(
             f"Unexpected creator value: {creator_item}, Admin Template Id: {admin_instance_id}"
@@ -135,16 +135,15 @@ def user_id_to_vcard(creator_item, admin_instance_id, orcid_client):
 
 def export_admin_data_to_dataset(admin_instance, subject, catalog_dict, orcid_client):
     title = admin_instance.get_title(
-        ADMIN_TEMPLATE_MAPPING["http://purl.org/dc/terms/title"],
+        ADMIN_TEMPLATE_MAPPING[DCTERMS.title],
         language_predicate=ADMIN_TEMPLATE_MAPPING["language"][-1],
     )
-    creator = admin_instance.get_attribute(
-        ADMIN_TEMPLATE_MAPPING["http://purl.org/dc/terms/creator"]
-    )
+    creator = admin_instance.get_attribute(ADMIN_TEMPLATE_MAPPING[DCTERMS.creator])
     # convert to VCard
     creator = [
         user_id_to_vcard(creator_item, admin_instance.admin_instance_id, orcid_client)
         for creator_item in creator
+        if not isinstance(creator_item, BNode)
     ]
 
     dates = admin_instance.get_pared_attributes(
@@ -155,11 +154,12 @@ def export_admin_data_to_dataset(admin_instance, subject, catalog_dict, orcid_cl
     else:
         start_date, end_date = dates[0]
     primary_contact = admin_instance.get_attribute(
-        ADMIN_TEMPLATE_MAPPING["http://www.w3.org/ns/dcat#contactPoint"]
+        ADMIN_TEMPLATE_MAPPING[DCAT.contactPoint]
     )
     primary_contact = [
         user_id_to_vcard(contact, admin_instance.admin_instance_id, orcid_client)
         for contact in primary_contact
+        if not isinstance(contact, BNode)
     ]
 
     publisher = catalog_dict["publisher"]
@@ -168,12 +168,12 @@ def export_admin_data_to_dataset(admin_instance, subject, catalog_dict, orcid_cl
     else:
         publisher = None
     keywords = []
-    kw = catalog_dict["keyword"]
-    if kw and isinstance(kw, list):
-        keywords = [Literal(i) for i in kw if pd.notnull(i)]
+    key_word = catalog_dict["keyword"]
+    if key_word and isinstance(key_word, list):
+        keywords = [Literal(i) for i in key_word if pd.notnull(i)]
     theme = []
     themes = catalog_dict["theme"]
-    if themes and isinstance(kw, list):
+    if themes and isinstance(key_word, list):
         theme = [URIRef(i) for i in themes if pd.notnull(i)]
 
     dataset = DCATDataSet(
@@ -376,7 +376,7 @@ def build_export_graph(client, orcid_client, portal_client, portal_url):
     )
     cedar_export.overall_mapping["content_graph_id"] = cedar_export.overall_mapping[
         "content_graph_id"
-    ].apply(lambda x: URIRef(x))
+    ].apply(URIRef)
 
     write_catalogs(
         cedar_export=cedar_export, export_graph=export_graph, portal_url=portal_url
