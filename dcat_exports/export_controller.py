@@ -1,7 +1,10 @@
+import re
 from abc import ABCMeta
-from typing import Dict, List
+from typing import Dict, List, Union
 
+import numpy as np
 import pandas as pd
+import w3lib.url
 
 from cedar.client import CedarClient
 from core.logger import get_logger
@@ -44,13 +47,13 @@ class ExportController:
                 logger.error(f"Empty catalog description: {instance_id}, skipping")
                 continue
             # get and validate content id
-            project_id = self._get_and_validate_content_reference(catalog_instance)
+            project_id = self._get_and_validate_admin_reference(catalog_instance)
             # get and validate dataset template instances' ids
             datasets = self._get_and_validate_datasets(catalog_instance, instance_id)
 
             instance_dict = {
                 "catalog_instance_id": instance_id,
-                "content_instance_id": project_id,
+                "admin_instance_id": project_id,
                 "description": description,
                 "publisher": catalog_instance["publisher"].get("@id"),
                 "dataset_id": datasets,
@@ -60,54 +63,76 @@ class ExportController:
         catalog_temp_instances_df = pd.DataFrame(data=catalog_templ_instances).explode(
             "dataset_id"
         )
+        catalog_temp_instances_df = self._normalize_template_link_columns(
+            catalog_temp_instances_df, "admin_instance_id"
+        )
+        catalog_temp_instances_df = self._normalize_template_link_columns(
+            catalog_temp_instances_df, "dataset_id"
+        )
         return catalog_temp_instances_df
 
-    def _get_and_validate_content_reference(self, catalog_instance: Dict) -> str:
+    def _get_and_validate_admin_reference(
+        self, catalog_instance: Dict
+    ) -> Union[str, None]:
+        """
+        Gets Admin Template Instance reference from a Catalog Template Instance
+        Checks if the URL provided is a link to an Admin Instance, retrieves Admin Instance ID from Content if Content
+        instance is referred instead
+        """
         catalog_log = f"Catalog template {catalog_instance['@id']}"
-        # typo in Cedar, adding "ProjectContentInstanceID" in case it will be corrected
-        possible_keys = [
-            "ProjectContentIntanceID",
-            "projectIdentifier",
-            "ProjectContentInstanceID",
-        ]
-        project_id = None
-        for key in possible_keys:
-            project_id = catalog_instance.get(key)
-            if project_id is not None and isinstance(project_id, List):
-                break
-        if project_id is None:
-            logger.warning(
-                f"{catalog_log} does not contain any of project keys: {', '.join(possible_keys)}"
-            )
-        elif isinstance(project_id, dict):
-            project_id = project_id.get("@id")
-        else:
-            if len(project_id) > 1:
-                logger.error(
-                    f"{catalog_log} is referring to several projects, please check"
-                )
-                raise CedarFieldError
-            project_id = project_id[0].get("@id")
-        if project_id is not None and project_id not in self.content_ids:
+        admin_id = catalog_instance.get("ProjectAdminIntanceID")
+        # Adding the following code in case the typo is fixed
+        if admin_id is None:
+            admin_id = catalog_instance.get("ProjectAdminInstanceID")
+        if admin_id is None:
             logger.error(
-                f"{catalog_log} is referring to a not existing Content template: {project_id}"
+                f"{catalog_log} does not contain `ProjectContentIn(s)tanceID` field"
             )
-        return project_id
+            return
+        admin_id = admin_id.get("@id")
+        if (
+            admin_id is not None
+            and admin_id not in self.admin_ids
+            and admin_id in self.content_ids
+        ):
+            logger.warning(
+                f"{catalog_log} refers to Content Instance instead of Admin, trying to fetch Admin..."
+            )
+            content = self.client.get_template_instance(admin_id).json()
+            admin_id = content["Other"]["Project Admin Instance ID"][
+                "Project Admin Instance ID"
+            ].get("@value")
+        elif (
+            admin_id is not None
+            and admin_id not in self.admin_ids
+            and admin_id not in self.content_ids
+        ):
+            logger.warning(
+                f"{catalog_log} has an unexpected Admin reference: {admin_id}"
+            )
+        return admin_id
 
     def _get_and_validate_datasets(
         self, catalog_instance: Dict, instance_id: str
     ) -> List:
-        datasets = [ds.get("@id") for ds in catalog_instance["datasetIdentifier"]]
+        datasets_list = catalog_instance.get("datasetIdentifier")
+        if datasets_list is None:
+            datasets_list = catalog_instance.get("datasetMetadataInstanceIdentifier")
+        datasets = [ds.get("@id") for ds in datasets_list]
         datasets_validated = datasets.copy()
         for data_set in datasets:
-            if data_set is not None and not data_set.startswith(self.client.base_url):
+            if not data_set:
+                logger.warning(
+                    f"Dataset reference in Catalog {catalog_instance['@id']} is empty"
+                )
+            elif not data_set.startswith(self.client.base_url):
                 logger.warning(
                     f"Unexpected dataset link: {data_set}, Catalog ID {instance_id}; skipping"
                 )
                 datasets_validated.remove(data_set)
             elif data_set not in self.dataset_ids:
                 logger.warning(
-                    f"Dataset {data_set} is not an instance of Dataset Template"
+                    f"Dataset {data_set} is not an instance of the latest Dataset Template"
                 )
         return datasets_validated
 
@@ -131,11 +156,16 @@ class ExportController:
                     )
                     continue
             for distr in distributions:
-                distr_id = distr["@id"]
-                linked_dist.append(
-                    {"dataset_id": dataset_id, "distribution_id": distr_id}
-                )
-                dist_validation_list.append(distr_id)
+                distr_id = distr.get("@id")
+                if distr_id:
+                    linked_dist.append(
+                        {"dataset_id": dataset_id, "distribution_id": distr_id}
+                    )
+                    dist_validation_list.append(distr_id)
+                else:
+                    logger.warning(
+                        f"Dataset {dataset_id} contains no links to Distributions"
+                    )
 
         missing_datasets = [
             dset for dset in self.dataset_ids if dset not in dataset_ids
@@ -151,6 +181,10 @@ class ExportController:
                 f"Following distributions are not referenced from a catalog: {f',{new_line}'.join(missed)}"
             )
         data_frame = pd.DataFrame(linked_dist)
+        data_frame = self._normalize_template_link_columns(
+            data_frame, "distribution_id"
+        )
+        data_frame = self._normalize_template_link_columns(data_frame, "dataset_id")
         self.overall_mapping = pd.merge(
             self.overall_mapping, data_frame, how="outer", on="dataset_id"
         )
@@ -203,14 +237,13 @@ class ExportController:
             self.collect_content_scope_data(scope, keywords, themes)
             content_dict["keyword"] += keywords
             content_dict["theme"] = themes
-            # # get reference to Admin template
-            # content_dict["admin_instance_id"] = content_templ_json["Other"][
-            #     "Project Admin Instance ID"
-            # ]["Project Admin Instance ID"].get("@value")
             content_data_dicts.append(content_dict)
         contents_df = pd.DataFrame(data=content_data_dicts)
+        contents_df = self._normalize_template_link_columns(
+            contents_df, "admin_instance_id"
+        )
         combined_dataframe = pd.merge(
-            self.overall_mapping, contents_df, how="outer", on="content_instance_id"
+            self.overall_mapping, contents_df, how="outer", on="admin_instance_id"
         )
         # Create a table with admin instances and merge other mappings table
         admin_df = pd.DataFrame(data={"admin_instance_id": self.admin_ids})
@@ -244,6 +277,34 @@ class ExportController:
         combined_dataframe = self._validate_admin_mapping(combined_dataframe)
         return combined_dataframe
 
+    def _normalize_template_link_columns(self, dataframe, column_name):
+        """Function to fix most frequent mistakes in a link to dataset:
+        - completes an ID with base URL if only ID is provided
+        - removes search parameters such as ?folder
+        - corrects slashes etc
+        """
+        # 90c508ec-1936-4d58-8d83-677e866bf6b6
+        id_pattern = re.compile(
+            "[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}"
+        )
+        dataframe[column_name] = dataframe[column_name].apply(
+            lambda x: f"{self.client.base_url}/template-instances/{x}"
+            if re.match(id_pattern, str(x))
+            else x
+        )
+        dataframe[column_name] = dataframe[column_name].apply(
+            lambda x: str(x).split("?")[0] if pd.notnull(x) else x
+        )
+        dataframe[column_name] = dataframe[column_name].apply(
+            lambda x: np.nan if x == "" else x
+        )
+        dataframe[column_name] = dataframe[column_name].apply(
+            lambda x: w3lib.url.canonicalize_url(x).replace("///", "//")
+            if pd.notnull(x) and str(x).startswith("http")
+            else x
+        )
+        return dataframe
+
     def _validate_content_mapping(self, dataframe):
         incorrect_admin_ref = dataframe.loc[
             pd.notnull(dataframe["admin_instance_id"])
@@ -260,7 +321,7 @@ class ExportController:
             for record in content_adm:
                 logger.warning(
                     f"Content instance {record['content_instance_id']} refers to "
-                    f"{record['admin_instance_id']}, please check"
+                    f"{record['admin_instance_id']} instead of Admin Instance, please check"
                 )
 
     @staticmethod
@@ -271,7 +332,7 @@ class ExportController:
         ]
         if not no_description.empty:
             logger.warning(
-                f"Following Admin template we not linked to a Content template and will be removed:"
+                f"Following Admin template was not referred from a Content template and will be removed:"
             )
             logger.warning(
                 f"{', '.join(no_description['admin_instance_id'].dropna().values)}"

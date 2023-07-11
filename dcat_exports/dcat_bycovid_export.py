@@ -117,6 +117,9 @@ def find_target_predicate_chain_values(
 
 def user_id_to_vcard(creator_item, admin_instance_id, orcid_client):
     creator_item = str(creator_item).rstrip(",.; ?/\\")
+    # To fix entries like https://orcid.org/my-orcid?orcid=000X-XXXX-XXXX-XXXX
+    if "?orcid=" in creator_item:
+        creator_item = "https://orcid.org/" + creator_item.split("=")[-1]
     if not ORCID_PATTERN.fullmatch(creator_item):
         logger.error(
             f"Unexpected creator value: {creator_item}, Admin Template Id: {admin_instance_id}"
