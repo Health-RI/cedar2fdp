@@ -8,6 +8,7 @@ import pytest
 from colorama import Fore
 from freezegun import freeze_time
 from rdflib import DCAT, DCTERMS, RDF, BNode, Graph, Literal, URIRef
+from rdflib.compare import to_isomorphic
 
 from dcat_exports.cedar_source_data import CedarAdminInstance
 from dcat_exports.dcat_bycovid_export import (
@@ -107,12 +108,14 @@ def test_export_admin_data(
         "theme": [],
     }
     # Act
-    actual = export_admin_data_to_dataset(
+    actual_graph = export_admin_data_to_dataset(
         admin_instance, TEST_ADMIN_ID, catalog_dict, orcid_client
     )
     # Assert
-    actual.to_graph(userinfo_format=user_info_format).serialize(destination=test_path)
-    assert compare_files(expected_path, test_path)
+    # Compare graphs via isomorphic because diff is not possible with multiple bnodes
+    expected = to_isomorphic(Graph().parse(expected_path, format="ttl"))
+    actual = to_isomorphic(actual_graph.to_graph(userinfo_format=user_info_format))
+    assert actual == expected
 
 
 @freeze_time("2023-06-06")
@@ -216,8 +219,9 @@ def test_add_vcard_info(user_info, info_type, expected_file, empty_graph):
         predicate=DCTERMS.creator,
         userinfo_format=info_type,
     )
-    empty_graph.serialize(destination=test_path)
-    assert compare_files(expected_path, test_path)
+    expected = to_isomorphic(Graph().parse(expected_path))
+    actual = to_isomorphic(empty_graph)
+    assert actual == expected
 
 
 @pytest.mark.parametrize(
