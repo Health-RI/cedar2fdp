@@ -273,7 +273,7 @@ class ExportController:
             pd.isnull(combined_dataframe["description"]), "description"
         ] = combined_dataframe["content_title"]
 
-        combined_dataframe = self._validate_focus_area(combined_dataframe)
+        self._validate_focus_area(combined_dataframe)
         combined_dataframe = self._validate_admin_mapping(combined_dataframe)
         return combined_dataframe
 
@@ -326,6 +326,10 @@ class ExportController:
 
     @staticmethod
     def _validate_admin_mapping(dataframe):
+        """
+        Checks if all admin instances have description and reference from content templates
+        Invalid records are removed
+        """
         no_description = dataframe.loc[
             pd.isnull(dataframe["content_instance_id"])
             | pd.isnull(dataframe["description"])
@@ -361,11 +365,6 @@ class ExportController:
             )
         ]
         if not invalid_fa.empty:
-            fa_in_question = dataframe.loc[
-                dataframe["focus_area_id"].isin(invalid_fa["focus_area_id"])
-                | dataframe["focus_area"].isin(invalid_fa["focus_area"])
-            ][["focus_area_id", "focus_area"]].drop_duplicates()
-
             invalid_records = invalid_fa.to_dict("records")
             for record in invalid_records:
                 focus_area_id = record["focus_area_id"]
@@ -374,18 +373,6 @@ class ExportController:
                     f"Unexpected combination of focus area id and label {focus_area_id}: "
                     f"{focus_area}"
                 )
-                correct_id = fa_in_question.loc[
-                    (fa_in_question["focus_area"] == focus_area)
-                    & (fa_in_question["focus_area_id"] != focus_area_id),
-                    "focus_area_id",
-                ].unique()
-                if correct_id.shape[0] == 1:
-                    correct_id = correct_id[0]
-                    logger.info(f"Replacing {focus_area_id} with {correct_id}")
-                    dataframe.loc[
-                        dataframe["focus_area"] == focus_area, "focus_area_id"
-                    ] = correct_id
-        return dataframe
 
     def collect_content_scope_data(self, scope, keywords, themes):
         if isinstance(scope, List):
