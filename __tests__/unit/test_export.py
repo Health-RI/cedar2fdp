@@ -106,10 +106,11 @@ def test_export_admin_data(
         "publisher": None,
         "keyword": None,
         "theme": [],
+        "content_graph_id": "https://some-link/catalog",
     }
     # Act
     actual_graph = export_admin_data_to_dataset(
-        admin_instance, TEST_ADMIN_ID, catalog_dict, orcid_client
+        admin_instance, TEST_ADMIN_ID, catalog_dict, orcid_client, cedar_client
     )
     # Assert
     # Compare graphs via isomorphic because diff is not possible with multiple bnodes
@@ -125,7 +126,9 @@ def test_top_level_bycovid(empty_graph, setup):
     test_path = Path(OUTPUT_DIR, "output-test", "test_root_catalog.ttl")
     # Act
     write_top_level(
-        empty_graph, portal_url=URIRef("https://covid19initiatives.health-ri.nl")
+        empty_graph,
+        portal_url=URIRef("https://covid19initiatives.health-ri.nl"),
+        fdp_url=URIRef("https://health-ri.sandbox.semlab-leiden.nl"),
     )
     empty_graph.serialize(destination=test_path)
     # Assert
@@ -203,6 +206,7 @@ def test_add_vcard_info(user_info, info_type, expected_file, empty_graph):
     creator = [
         VCard(full_name=item.get("full_name"), uid=item["uid"]) for item in user_info
     ]
+    publisher = URIRef("http://example.com")
     contact_point = []
     dcat_instance = DCATDataSet(
         uri=uri,
@@ -210,6 +214,9 @@ def test_add_vcard_info(user_info, info_type, expected_file, empty_graph):
         description=description,
         creator=creator,
         contact_point=contact_point,
+        has_version=URIRef("http://example.com"),
+        is_part_of=URIRef("http://example.com"),
+        publisher=publisher,
     )
     empty_graph.add((uri, RDF.type, DCAT.Dataset))
     dcat_instance.add_vcard_info(
@@ -239,12 +246,16 @@ def test_user_info_uriref(user_info, info_type, expected_file, empty_graph):
     description = Literal("test description")
     creator = user_info
     contact_point = []
+    publisher = URIRef("http://example.com")
     dcat_instance = DCATDataSet(
         uri=uri,
         title=title,
         description=description,
         creator=creator,
         contact_point=contact_point,
+        has_version=URIRef("http://example.com"),
+        is_part_of=URIRef("http://example.com"),
+        publisher=publisher,
     )
     empty_graph.add((uri, RDF.type, DCAT.Dataset))
     dcat_instance.add_vcard_info(

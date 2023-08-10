@@ -79,6 +79,8 @@ ORCID_PATTERN = re.compile(
     "3}-\d{3}[\dX]?))"
 )
 
+ZONMW_ONTOLOGY = "http://purl.org/zonmw/covid19"
+
 
 class ByCovidConfig(metaclass=CedarConfig):
     admin_templ_id = "337cb6f3-eef6-4b2f-9ffb-3f6d6cc9b9ac"
@@ -133,16 +135,34 @@ def user_id_to_vcard(creator_item, admin_instance_id, orcid_client):
     return v_card
 
 
-def export_admin_data_to_dataset(admin_instance, subject, catalog_dict, orcid_client):
+def export_admin_data_to_dataset(
+    admin_instance, subject, catalog_dict, orcid_client, cedar_client
+):
     title = admin_instance.get_title(
         ADMIN_TEMPLATE_MAPPING[DCTERMS.title],
         language_predicate=ADMIN_TEMPLATE_MAPPING["language"][-1],
     )
-    creator = admin_instance.get_attribute(ADMIN_TEMPLATE_MAPPING[DCTERMS.creator])
+    if (
+        admin_instance.admin_instance_id
+        == "https://repo.metadatacenter.org/template-instances/2de49059-5153-496e-b9b1-fdff8f619005"
+    ):
+        print()
+    creator_orcid = admin_instance.get_attribute(
+        ADMIN_TEMPLATE_MAPPING[DCTERMS.creator]
+    )
+    # values with space like "https://orcid.org/ 0000-0002-9614-2577" do not appear in the graph then query from json
+    if not creator_orcid:
+        templ = cedar_client.get_template_instance(
+            admin_instance.admin_instance_id
+        ).json()
+        creator_orcid = [
+            URIRef(elem["ORCID of Person completing this Form"]["@id"].replace(" ", ""))
+            for elem in templ["Other"]["ORCID of Person completing this Form"]
+        ]
     # convert to VCard
     creator = [
         user_id_to_vcard(creator_item, admin_instance.admin_instance_id, orcid_client)
-        for creator_item in creator
+        for creator_item in creator_orcid
         if not isinstance(creator_item, BNode)
     ]
 
@@ -164,9 +184,9 @@ def export_admin_data_to_dataset(admin_instance, subject, catalog_dict, orcid_cl
 
     publisher = catalog_dict["publisher"]
     if pd.notnull(publisher):
-        publisher = URIRef(publisher)
+        publisher = [URIRef(publisher)]
     else:
-        publisher = None
+        publisher = creator_orcid
     keywords = []
     key_word = catalog_dict["keyword"]
     if key_word and isinstance(key_word, list):
@@ -187,6 +207,8 @@ def export_admin_data_to_dataset(admin_instance, subject, catalog_dict, orcid_cl
         publisher=publisher,
         keyword=keywords,
         theme=theme,
+        is_part_of=URIRef(catalog_dict["content_graph_id"]),
+        has_version=URIRef(admin_instance.admin_instance_id),
     )
     return dataset
 
@@ -232,7 +254,7 @@ def write_datasets(
         for record in ds_list_of_records:
             subject = URIRef(record["admin_graph_id"])
             dataset = export_admin_data_to_dataset(
-                admin_instance, subject, record, orcid_client
+                admin_instance, subject, record, orcid_client, client
             )
             if str(dataset.title).startswith("TEST-"):
                 continue
@@ -281,9 +303,10 @@ def write_dist(client, export, mapping_table):
             graph=dist_graph,
             export=export,
         )
+        export.add((subject, DCTERMS.isPartOf, dataset_link))
 
 
-def write_top_level(export, portal_url):
+def write_top_level(export, portal_url, fdp_url):
     """Adds top-level Catalog pointing to Covid-19 portal"""
     title = "COVID-19 related data initiatives - Project overview"
     description = (
@@ -303,6 +326,7 @@ def write_top_level(export, portal_url):
     export.add((portal_url, DCTERMS.title, Literal(title)))
     export.add((portal_url, DCTERMS.description, Literal(description)))
     export.add((portal_url, DCTERMS.issued, Literal(issued, datatype=XSD.date)))
+    export.add((portal_url, DCTERMS.isPartOf, fdp_url))
     for keyword in keywords:
         export.add((portal_url, DCAT.keyword, Literal(keyword)))
     export.add((portal_url, FOAF.homepage, URIRef(homepage)))
@@ -331,7 +355,9 @@ def write_catalogs(cedar_export, export_graph, portal_url):
                 ),
             )
         )
+        export_graph.add((subject, DCTERMS.isPartOf, portal_url))
         export_graph.add((subject, DCAT.theme, URIRef(item["focus_area_id"])))
+        export_graph.add((subject, DCTERMS.hasVersion, URIRef(ZONMW_ONTOLOGY)))
         export_graph.add((portal_url, DCAT.catalog, subject))
 
 
@@ -358,13 +384,13 @@ def get_portal_project_ids(portal_client: PortalClient, portal_url):
     return portal_df
 
 
-def build_export_graph(client, orcid_client, portal_client, portal_url):
+def build_export_graph(client, orcid_client, portal_client, portal_url, fdp_url):
     export_graph = Graph()
     # bind namespaces
     export_graph.bind("dcat", DCAT)
     export_graph.bind("dcterms", DCTERMS)
 
-    write_top_level(export_graph, portal_url)
+    write_top_level(export_graph, portal_url, fdp_url)
 
     cedar_export = ExportController(client, ByCovidConfig)
     cedar_export.overall_mapping = cedar_export.get_catalogs_data()
@@ -411,11 +437,13 @@ def export_dcat():
         username=config["covid_portal"]["username"],
         password=config["covid_portal"]["password"],
     )
+    fdp_url = URIRef(config["fdp"]["base_url"])
     export = build_export_graph(
         client=client,
         orcid_client=orcid,
         portal_client=portal_client,
         portal_url=URIRef(portal_url),
+        fdp_url=fdp_url,
     )
     export.serialize(
         destination=f"../example-output/{datetime.now().date()}_output.ttl"

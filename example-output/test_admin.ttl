@@ -7,7 +7,12 @@
         <https://orcid.org/0000-0001-5878-7481_test>,
         <https://orcid.org/0000-0001-5878-7481_test2> ;
     dcterms:description "Test description" ;
+    dcterms:hasVersion <https://repo.metadatacenter.org/template-instances/d832e5e6-89b9-4d35-a570-15dd15a6792a> ;
     dcterms:identifier "d832e5e6-89b9-4d35-a570-15dd15a6792a"^^xsd:token ;
+    dcterms:isPartOf <https://some-link/catalog> ;
+    dcterms:publisher <https://orcid.org/0000-0001-5878-7481>,
+        <https://orcid.org/0000-0001-5878-7481_test>,
+        <https://orcid.org/0000-0001-5878-7481_test2> ;
     dcterms:temporal [ a dcterms:PeriodOfTime ;
             dcat:endDate "2023-06-01"^^xsd:date ;
             dcat:startDate "2023-05-01"^^xsd:date ] ;

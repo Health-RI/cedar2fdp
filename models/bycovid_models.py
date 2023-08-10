@@ -35,9 +35,11 @@ class DCATDataSet(BaseModel):
     start_date: Optional[Literal]
     end_date: Optional[Literal]
     contact_point: Union[List[URIRef], List[VCard]]
-    publisher: Optional[URIRef]
+    publisher: Union[List[URIRef], URIRef]
     keyword: Optional[List[Literal]] = Field(default_factory=list)
     theme: Optional[List[URIRef]] = Field(default_factory=list)
+    is_part_of: URIRef
+    has_version: URIRef  # Should be dcat:version in the next version of the FDP release(aiming for 1.18.0)
 
     @validator("creator", "contact_point")
     def validate_empty_nodes(cls, field_value, values, field):
@@ -86,8 +88,10 @@ class DCATDataSet(BaseModel):
 
         if self.description:
             graph.add((subject, DCTERMS.description, self.description))
-        if self.publisher:
-            graph.add((subject, DCTERMS.publisher, self.publisher))
+        for publisher in self.publisher:
+            graph.add((subject, DCTERMS.publisher, publisher))
+        graph.add((subject, DCTERMS.isPartOf, self.is_part_of))
+        graph.add((subject, DCTERMS.hasVersion, self.has_version))
         for key_w in self.keyword:
             graph.add((subject, DCAT.keyword, key_w))
         for theme in self.theme:
