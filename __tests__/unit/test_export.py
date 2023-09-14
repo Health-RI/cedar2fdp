@@ -12,9 +12,9 @@ from rdflib.compare import to_isomorphic
 
 from dcat_exports.cedar_source_data import CedarAdminInstance
 from dcat_exports.dcat_bycovid_export import (
+    build_top_level_catalog,
     export_admin_data_to_dataset,
-    write_dist,
-    write_top_level,
+    write_distributions,
 )
 from models.bycovid_models import VCARD, DCATDataSet, VCard
 
@@ -125,7 +125,7 @@ def test_top_level_bycovid(empty_graph, setup):
     expected_path = Path(OUTPUT_DIR, "test_root_catalog.ttl")
     test_path = Path(OUTPUT_DIR, "output-test", "test_root_catalog.ttl")
     # Act
-    write_top_level(
+    build_top_level_catalog(
         empty_graph,
         portal_url=URIRef("https://covid19initiatives.health-ri.nl"),
         fdp_url=URIRef("https://health-ri.sandbox.semlab-leiden.nl"),
@@ -378,7 +378,7 @@ def test_write_distr(client, empty_graph):
 
     mapping_table = pd.DataFrame.from_dict(data)
     client.get_template_instance_jsonld.side_effect = get_template_by_id
-    write_dist(client, export=export, mapping_table=mapping_table)
+    write_distributions(client, export=export, mapping_table=mapping_table)
     # Assert
     export.serialize(destination=test_path)
     assert compare_files(expected_path, test_path)
