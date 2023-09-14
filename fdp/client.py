@@ -1,7 +1,17 @@
+from typing import Union
+from urllib.parse import urlparse
+
 import requests
-from rdflib import Graph
+from rdflib import Graph, URIRef
 
 from core.api_client import BasicAPIClient
+
+
+class FDPEndPoints:
+    meta = "meta"
+    state = f"{meta}/state"
+    members = "members"
+    expanded = "expanded"
 
 
 class FDPClient(BasicAPIClient):
@@ -26,6 +36,43 @@ class FDPClient(BasicAPIClient):
     def get_headers(self):
         return {"Authorization": f"Bearer {self.token}", "Content-Type": "text/turtle"}
 
-    def post_serialised(self, resource_type: str, metadata: "Graph") -> None:
+    def _update_session_headers(self):
+        self.session.headers.update(self.headers)
+
+    def _change_content_type(self, content_type):
+        self.headers["Content-Type"] = content_type
+        self._update_session_headers()
+
+    def post_serialised(
+        self, resource_type: str, metadata: "Graph"
+    ) -> Union[requests.Response, None]:
+        self._change_content_type("text/turtle")
         path = f"{self.base_url}/{resource_type}"
         response = self.post(path=path, data=metadata.serialize())
+        return response
+
+    def get_data(self, path: str) -> requests.Response:
+        response = self.get(path=path)
+        return response
+
+    def delete_record(self, path: str) -> requests.Response:
+        response = self.delete(path=path)
+        return response
+
+    def publish_record(self, record_url):
+        self._change_content_type("application/json")
+        path = f"{record_url}/{FDPEndPoints.state}"
+        data = '{"current": "PUBLISHED"}'
+        self.update(path=path, data=data)
+
+    def create_and_publish(self, resource_type: str, metadata: "Graph") -> URIRef:
+        post_response = self.post_serialised(
+            resource_type=resource_type, metadata=metadata
+        )
+        fdp_subject = next(Graph().parse(data=post_response.text).subjects())
+        fdp_path = urlparse(fdp_subject).path
+        if fdp_path.count("/") > 2:
+            fdp_path = fdp_path.rsplit("/", maxsplit=2)[0]
+        fdp_subject = URIRef(f"{self.base_url}{fdp_path}")
+        self.publish_record(fdp_subject)
+        return fdp_subject
