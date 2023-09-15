@@ -367,7 +367,6 @@ def build_top_level_catalog(export, portal_url, fdp_url) -> Graph:
     issued = datetime.now().date()
     keywords = ["COVID-19"]
     homepage = f"{portal_url}{PortalEndPoints.project_overview}"
-    publisher = HEALTH_RI_URL
 
     export.bind("foaf", FOAF)
     export.add((portal_url, RDF.type, DCAT.Catalog))
@@ -375,7 +374,7 @@ def build_top_level_catalog(export, portal_url, fdp_url) -> Graph:
     export.add((portal_url, DCTERMS.description, Literal(description)))
     export.add((portal_url, DCTERMS.issued, Literal(issued, datatype=XSD.date)))
     export.add((portal_url, DCTERMS.isPartOf, fdp_url))
-    export.add((portal_url, DCTERMS.publisher, publisher))
+    export.add((portal_url, DCTERMS.publisher, HEALTH_RI_URL))
     for keyword in keywords:
         export.add((portal_url, DCAT.keyword, Literal(keyword)))
     export.add((portal_url, FOAF.homepage, URIRef(homepage)))

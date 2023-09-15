@@ -9,7 +9,7 @@
     dcterms:description "Test description" ;
     dcterms:hasVersion <https://repo.metadatacenter.org/template-instances/d832e5e6-89b9-4d35-a570-15dd15a6792a> ;
     dcterms:identifier "d832e5e6-89b9-4d35-a570-15dd15a6792a"^^xsd:token ;
-    dcterms:isPartOf <https://some-link/catalog> ;
+    dcterms:isPartOf <https://example-fdp.com/link1> ;
     dcterms:publisher <https://orcid.org/0000-0001-5878-7481>,
         <https://orcid.org/0000-0001-5878-7481_test>,
         <https://orcid.org/0000-0001-5878-7481_test2> ;
@@ -18,5 +18,6 @@
             dcat:startDate "2023-05-01"^^xsd:date ] ;
     dcterms:title "TEST-dummy test admin template"@en,
         "TEST-andere test naam"@nl ;
-    dcat:contactPoint <https://example.com/orcid_id> .
+    dcat:contactPoint <https://example.com/orcid_id> ;
+    dcat:landingPage <https://repo.metadatacenter.org/template-instances/d832e5e6-89b9-4d35-a570-15dd15a6792a> .
 

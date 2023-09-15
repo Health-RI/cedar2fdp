@@ -3,34 +3,22 @@
 
 <https://example.com/test_project_1#distribution-0> a dcat:Distribution ;
     dcterms:description "Test distribution description 1" ;
-    dcterms:format "Consent" ;
-    dcterms:isPartOf <https://example.com/test_project_1> ;
-    dcterms:license [ ] ;
+    dcterms:format <https://w3id.org/spar/mediatype/Consent> ;
+    dcterms:isPartOf <https://example.com/fdp_id_test_project_1> ;
     dcterms:title "Test distribution title 1" ;
-    dcat:accessURL <https://opal.health-ri.nl/pub/> .
+    dcat:accessURL <https://opal.health-ri.nl/pub> .
 
 <https://example.com/test_project_1#distribution-1> a dcat:Distribution ;
     dcterms:description "Test distribution description 2" ;
-    dcterms:format "Consent" ;
-    dcterms:isPartOf <https://example.com/test_project_1> ;
-    dcterms:license [ ] ;
+    dcterms:format <https://w3id.org/spar/mediatype/Consent> ;
+    dcterms:isPartOf <https://example.com/fdp_id_test_project_1> ;
     dcterms:title "Test distribution title 2" ;
-    dcat:accessURL <https://opal.health-ri.nl/pub/> .
-
-<https://example.com/test_project_2> a dcat:Dataset ;
-    dcterms:title "Project2" ;
-    dcat:distribution <https://example.com/test_project_2#distribution> .
+    dcat:accessURL <https://opal.health-ri.nl/pub> .
 
 <https://example.com/test_project_2#distribution> a dcat:Distribution ;
     dcterms:description "Test distribution description 3" ;
-    dcterms:format "Consent" ;
-    dcterms:isPartOf <https://example.com/test_project_2> ;
-    dcterms:license [ ] ;
+    dcterms:format <https://w3id.org/spar/mediatype/Consent> ;
+    dcterms:isPartOf <https://example.com/fdp_id_test_project_2> ;
     dcterms:title "Test distribution title 3" ;
-    dcat:accessURL <https://opal.health-ri.nl/pub/> .
-
-<https://example.com/test_project_1> a dcat:Dataset ;
-    dcterms:title "Project1" ;
-    dcat:distribution <https://example.com/test_project_1#distribution-0>,
-        <https://example.com/test_project_1#distribution-1> .
+    dcat:accessURL <https://opal.health-ri.nl/pub> .
 
