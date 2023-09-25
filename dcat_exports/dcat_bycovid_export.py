@@ -248,7 +248,7 @@ def write_datasets(
                 )
                 fdp_dataset_id_to_subj_dict[subject] = fdp_subject
             except SystemExit:
-                logger.error(f"Failed to upload resource")
+                logger.error(f"Failed to upload dataset {subject}")
     return fdp_dataset_id_to_subj_dict
 
 
@@ -273,17 +273,7 @@ def build_distribution(
     dist_instance = client.get_template_instance(instance_id).json()
     title = dist_instance["title"]["@value"]
     media_type = dist_instance["distributionMediaType"]
-    if media_type:
-        distribution_format = media_type["@id"]
-    else:
-        distribution_format = dist_instance["distributionFormat"]["@value"]
-        if distribution_format and not (
-            distribution_format.startswith("http")
-            or distribution_format.startswith("www.")
-        ):
-            distribution_format = (
-                f"{DCAT_MEDIATYPE}/{distribution_format.replace(' ', '%')}"
-            )
+    distribution_format = media_type.get("@id")
     if distribution_format:
         distribution_format = URIRef(distribution_format)
     description = dist_instance["description"]["@value"]
@@ -350,7 +340,7 @@ def write_distributions(
                 resource_type="distribution", metadata=dist_graph
             )
         except SystemExit:
-            logger.error(f"Failed to upload resource")
+            logger.error(f"Failed to upload distribution: {subject}")
 
 
 def build_top_level_catalog(export, portal_url, fdp_url) -> Graph:
@@ -435,7 +425,7 @@ def write_catalogs(cedar_export, export_graph, portal_url, fdp_client):
     try:
         fdp_client.create_and_publish(resource_type="catalog", metadata=export_graph)
     except SystemExit:
-        logger.error(f"Failed to upload resource")
+        logger.error(f"Failed to upload catalog {subject}")
     return sub_links
 
 

@@ -69,7 +69,11 @@ class FDPClient(BasicAPIClient):
         post_response = self.post_serialised(
             resource_type=resource_type, metadata=metadata
         )
-        fdp_subject = next(Graph().parse(data=post_response.text).subjects())
+        fdp_subject = [
+            x
+            for x in Graph().parse(data=post_response.text).subjects()
+            if isinstance(x, URIRef)
+        ][0]
         fdp_path = urlparse(fdp_subject).path
         if fdp_path.count("/") > 2:
             fdp_path = fdp_path.rsplit("/", maxsplit=2)[0]
