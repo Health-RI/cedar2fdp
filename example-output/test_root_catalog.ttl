@@ -6,7 +6,9 @@
 <https://covid19initiatives.health-ri.nl> a dcat:Catalog ;
     dcterms:description """Health-RI launched the Dutch COVID-19 Data Support Programme to support investigators and health care professionals with tools and services in their search for ways to overcome the pandemic and its' health consequences. 
 To facilitate and stimulate an integrated health data infrastructure, Health-RI facilitates investigators by connecting communities, providing data services and tools, and presenting an overview of COVID-19 related initiatives, provided on this site.""" ;
+    dcterms:isPartOf <https://health-ri.sandbox.semlab-leiden.nl> ;
     dcterms:issued "2023-06-06"^^xsd:date ;
+    dcterms:publisher <https://www.health-ri.nl> ;
     dcterms:title "COVID-19 related data initiatives - Project overview" ;
     dcat:keyword "COVID-19" ;
     foaf:homepage <https://covid19initiatives.health-ri.nl/p/ProjectOverview> .

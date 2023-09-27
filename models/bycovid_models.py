@@ -35,9 +35,12 @@ class DCATDataSet(BaseModel):
     start_date: Optional[Literal]
     end_date: Optional[Literal]
     contact_point: Union[List[URIRef], List[VCard]]
-    publisher: Optional[URIRef]
+    publisher: Union[List[URIRef], URIRef]
     keyword: Optional[List[Literal]] = Field(default_factory=list)
     theme: Optional[List[URIRef]] = Field(default_factory=list)
+    is_part_of: URIRef
+    has_version: URIRef  # Should be dcat:version in the next version of the FDP release(aiming for 1.18.0)
+    landing: URIRef
 
     @validator("creator", "contact_point")
     def validate_empty_nodes(cls, field_value, values, field):
@@ -52,7 +55,7 @@ class DCATDataSet(BaseModel):
     def to_graph(self, userinfo_format: str = None) -> Graph:
         """Converts class instance to dcat dataset graph"""
         graph = Graph()
-        subject = URIRef(self.uri)
+        subject = self.uri
         # For dcterms:identifier
         identifier = subject.rsplit("/", maxsplit=1)[-1]
 
@@ -86,8 +89,11 @@ class DCATDataSet(BaseModel):
 
         if self.description:
             graph.add((subject, DCTERMS.description, self.description))
-        if self.publisher:
-            graph.add((subject, DCTERMS.publisher, self.publisher))
+        for publisher in self.publisher:
+            graph.add((subject, DCTERMS.publisher, publisher))
+        graph.add((subject, DCTERMS.isPartOf, self.is_part_of))
+        graph.add((subject, DCTERMS.hasVersion, self.has_version))
+        graph.add((subject, DCAT.landingPage, self.landing))
         for key_w in self.keyword:
             graph.add((subject, DCAT.keyword, key_w))
         for theme in self.theme:
@@ -148,3 +154,36 @@ class DCATDataSet(BaseModel):
                 predicate=predicate,
                 node_type=userinfo_format,
             )
+
+
+class DCATDistribution(BaseModel):
+    """DCAT Distribution model"""
+
+    uri: URIRef
+    title: Literal
+    description: Literal
+    distr_format: Optional[URIRef]
+    distr_license: Optional[URIRef]
+    is_part_of: URIRef
+    access_url: List[URIRef]
+
+    def to_graph(self) -> Graph:
+        """Converts class instance to dcat distribution graph"""
+        graph = Graph()
+        subject = self.uri
+
+        graph.add((subject, RDF.type, DCAT.Distribution))
+        graph.add((subject, DCTERMS.title, self.title))
+        graph.add((subject, DCTERMS.description, self.description))
+        if self.distr_format:
+            graph.add((subject, DCTERMS.format, self.distr_format))
+        graph.add((subject, DCTERMS.isPartOf, self.is_part_of))
+        if self.distr_license:
+            graph.add((subject, DCTERMS.license, self.distr_license))
+        for access_url in self.access_url:
+            graph.add((subject, DCAT.accessURL, access_url))
+
+        graph.bind("dcat", DCAT)
+        graph.bind("dcterms", DCTERMS)
+
+        return graph

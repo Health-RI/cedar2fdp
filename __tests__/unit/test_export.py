@@ -1,5 +1,5 @@
 import difflib
-import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,12 +9,13 @@ from colorama import Fore
 from freezegun import freeze_time
 from rdflib import DCAT, DCTERMS, RDF, BNode, Graph, Literal, URIRef
 from rdflib.compare import to_isomorphic
+from requests import Response
 
 from dcat_exports.cedar_source_data import CedarAdminInstance
 from dcat_exports.dcat_bycovid_export import (
+    build_top_level_catalog,
     export_admin_data_to_dataset,
-    write_dist,
-    write_top_level,
+    write_distributions,
 )
 from models.bycovid_models import VCARD, DCATDataSet, VCard
 
@@ -22,7 +23,9 @@ ROOT_DIR = Path(__file__).parents[2]
 INPUT_DIR = Path(ROOT_DIR, "./example-input")
 OUTPUT_DIR = Path(ROOT_DIR, "./example-output")
 
-TEST_ADMIN_ID = "https://repo.metadatacenter.org/template-instances/d832e5e6-89b9-4d35-a570-15dd15a6792a"
+TEST_ADMIN_ID = URIRef(
+    "https://repo.metadatacenter.org/template-instances/d832e5e6-89b9-4d35-a570-15dd15a6792a"
+)
 
 
 def color_diff(line):
@@ -106,10 +109,14 @@ def test_export_admin_data(
         "publisher": None,
         "keyword": None,
         "theme": [],
+        "content_graph_id": "https://some-link/catalog",
+    }
+    mapping = {
+        URIRef("https://some-link/catalog"): URIRef("https://example-fdp.com/link1")
     }
     # Act
     actual_graph = export_admin_data_to_dataset(
-        admin_instance, TEST_ADMIN_ID, catalog_dict, orcid_client
+        admin_instance, TEST_ADMIN_ID, catalog_dict, orcid_client, cedar_client, mapping
     )
     # Assert
     # Compare graphs via isomorphic because diff is not possible with multiple bnodes
@@ -124,8 +131,10 @@ def test_top_level_bycovid(empty_graph, setup):
     expected_path = Path(OUTPUT_DIR, "test_root_catalog.ttl")
     test_path = Path(OUTPUT_DIR, "output-test", "test_root_catalog.ttl")
     # Act
-    write_top_level(
-        empty_graph, portal_url=URIRef("https://covid19initiatives.health-ri.nl")
+    build_top_level_catalog(
+        empty_graph,
+        portal_url=URIRef("https://covid19initiatives.health-ri.nl"),
+        fdp_url=URIRef("https://health-ri.sandbox.semlab-leiden.nl"),
     )
     empty_graph.serialize(destination=test_path)
     # Assert
@@ -203,6 +212,7 @@ def test_add_vcard_info(user_info, info_type, expected_file, empty_graph):
     creator = [
         VCard(full_name=item.get("full_name"), uid=item["uid"]) for item in user_info
     ]
+    publisher = URIRef("http://example.com")
     contact_point = []
     dcat_instance = DCATDataSet(
         uri=uri,
@@ -210,6 +220,10 @@ def test_add_vcard_info(user_info, info_type, expected_file, empty_graph):
         description=description,
         creator=creator,
         contact_point=contact_point,
+        has_version=URIRef("http://example.com"),
+        is_part_of=URIRef("http://example.com"),
+        landing=URIRef("http://example.com/test_project_1"),
+        publisher=publisher,
     )
     empty_graph.add((uri, RDF.type, DCAT.Dataset))
     dcat_instance.add_vcard_info(
@@ -239,12 +253,17 @@ def test_user_info_uriref(user_info, info_type, expected_file, empty_graph):
     description = Literal("test description")
     creator = user_info
     contact_point = []
+    publisher = URIRef("http://example.com")
     dcat_instance = DCATDataSet(
         uri=uri,
         title=title,
         description=description,
         creator=creator,
         contact_point=contact_point,
+        has_version=URIRef("http://example.com"),
+        is_part_of=URIRef("http://example.com"),
+        landing=URIRef("http://example.com/test_project_1"),
+        publisher=publisher,
     )
     empty_graph.add((uri, RDF.type, DCAT.Dataset))
     dcat_instance.add_vcard_info(
@@ -259,36 +278,38 @@ def test_user_info_uriref(user_info, info_type, expected_file, empty_graph):
 
 
 def get_template_by_id(*args, **kwargs):
+    result = Response()
+    result.code = "OK"
+    result.status_code = 200
     templ_id = args[0].split("/")[-1]
     path = Path(INPUT_DIR, f"distr_test{templ_id}.json")
-    with open(path, "r") as t_file:
-        template_json_ld = json.loads(t_file.read())
-    return template_json_ld
+    with open(path, "rb") as t_file:
+        template_json_ld = t_file.read()
+    result._content = template_json_ld
+    result.encoding = "utf-8"
+    return result
+
+
+def add_to_file(*args, **kwargs):
+    test_path = Path(OUTPUT_DIR, "output-test", "test_distribution.ttl")
+    export_graph = Graph()
+    if os.path.exists(test_path):
+        export_graph.parse(test_path, format="turtle")
+    export_graph += kwargs["metadata"]
+    export_graph.serialize(destination=test_path)
 
 
 @patch("cedar.client.CedarClient")
-def test_write_distr(client, empty_graph):
+@patch("fdp.client.FDPClient")
+def test_write_distr(fdp_client, client):
     """Tests multiple distributions per project"""
     # Set Up
     expected_path = Path(OUTPUT_DIR, "test_distribution.ttl")
     test_path = Path(OUTPUT_DIR, "output-test", "test_distribution.ttl")
-    export = empty_graph
-    export.add((URIRef("https://example.com/test_project_1"), RDF.type, DCAT.Dataset))
-    export.add(
-        (
-            URIRef("https://example.com/test_project_1"),
-            DCTERMS.title,
-            Literal("Project1"),
-        )
-    )
-    export.add((URIRef("https://example.com/test_project_2"), RDF.type, DCAT.Dataset))
-    export.add(
-        (
-            URIRef("https://example.com/test_project_2"),
-            DCTERMS.title,
-            Literal("Project2"),
-        )
-    )
+    try:
+        os.remove(test_path)
+    except OSError:
+        pass
 
     data = {
         "admin_instance_id": [
@@ -366,8 +387,21 @@ def test_write_distr(client, empty_graph):
     }
 
     mapping_table = pd.DataFrame.from_dict(data)
-    client.get_template_instance_jsonld.side_effect = get_template_by_id
-    write_dist(client, export=export, mapping_table=mapping_table)
+    client.get_template_instance.side_effect = get_template_by_id
+    mapping = {
+        URIRef("https://example.com/test_project_1"): URIRef(
+            "https://example.com/fdp_id_test_project_1"
+        ),
+        URIRef("https://example.com/test_project_2"): URIRef(
+            "https://example.com/fdp_id_test_project_2"
+        ),
+    }
+    fdp_client.create_and_publish.side_effect = add_to_file
+    write_distributions(
+        client,
+        mapping_table=mapping_table,
+        fdp_dataset_id_to_subj_mapping=mapping,
+        fdp_client=fdp_client,
+    )
     # Assert
-    export.serialize(destination=test_path)
     assert compare_files(expected_path, test_path)

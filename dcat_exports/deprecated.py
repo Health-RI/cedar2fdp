@@ -1,7 +1,7 @@
 from collections import OrderedDict
 from datetime import datetime
 
-from rdflib import RDFS, Graph, URIRef
+from rdflib import DCAT, DCTERMS, RDFS, Graph, URIRef
 
 from cedar.client import CedarClient
 from core.logger import get_logger
@@ -39,6 +39,17 @@ CATALOG_TO_ADMIN_MAPPING = (
     "https://schema.metadatacenter.org/properties/d9ff53e9-7762-4b0b-a466-c750148b3baa",
     "https://schema.metadatacenter.org/properties/7e519671-cb71-4bb9-8540-49989f5ca3db",
 )
+
+DIST_MAPPING = {
+    # "datasetDate": ("http://purl.org/dc/terms/issued"),
+    DCTERMS.format: ("http://purl.org/dc/terms/conformsTo",),
+    # "distributionMediaType": "http://www.w3.org/ns/dcat#mediaType",
+    DCTERMS.title: ("http://purl.org/dc/terms/title",),
+    # "accessService": "http://www.w3.org/ns/dcat#accessService",
+    DCTERMS.description: ("http://purl.org/dc/terms/description",),
+    DCTERMS.license: ("http://purl.org/dc/terms/license",),
+    DCAT.accessURL: ("http://www.w3.org/ns/dcat#accessURL",),
+}
 
 
 def map_content_to_focus_area(
@@ -115,6 +126,27 @@ def get_resulting_catalog_mapping(catalogs):
         for content_inst in lst
     }
     return resulting_catalog_mapping
+
+
+def find_target_predicate_chain_values(
+    mapping_table: dict,
+    source_subject: URIRef,
+    target_subject: URIRef,
+    graph: Graph,
+    export: Graph,
+) -> None:
+    for target_predicate, mapping in mapping_table.items():
+        result = [
+            record[0]
+            for record in get_object_recursively(mapping, source_subject, graph)
+        ]
+
+        if result is None:
+            raise CedarFieldError(
+                f"Could not find target value for predicate chain {mapping}"
+            )
+        for node in result:
+            export.add((target_subject, URIRef(target_predicate), node))
 
 
 def query_dataset(graph):

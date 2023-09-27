@@ -14,13 +14,19 @@
             ns1:fn "Test_Vorenaam Test_ Achternaam" ;
             ns1:hasUID <https://orcid.org/0000-0001-5878-7481_test2> ] ;
     dcterms:description "Test description" ;
+    dcterms:hasVersion <https://repo.metadatacenter.org/template-instances/d832e5e6-89b9-4d35-a570-15dd15a6792a> ;
     dcterms:identifier "d832e5e6-89b9-4d35-a570-15dd15a6792a"^^xsd:token ;
     dcterms:temporal [ a dcterms:PeriodOfTime ;
             dcat:endDate "2023-06-01"^^xsd:date ;
             dcat:startDate "2023-05-01"^^xsd:date ] ;
+    dcterms:isPartOf <https://example-fdp.com/link1> ;
+    dcterms:publisher <https://orcid.org/0000-0001-5878-7481>,
+        <https://orcid.org/0000-0001-5878-7481_test>,
+        <https://orcid.org/0000-0001-5878-7481_test2> ;
     dcterms:title "TEST-dummy test admin template"@en,
         "TEST-andere test naam"@nl ;
     dcat:contactPoint [ a ns1:VCard ;
             ns1:fn "Next test Value" ;
-            ns1:hasUID <https://example.com/orcid_id> ] .
+            ns1:hasUID <https://example.com/orcid_id> ] ;
+    dcat:landingPage <https://repo.metadatacenter.org/template-instances/d832e5e6-89b9-4d35-a570-15dd15a6792a> .
 

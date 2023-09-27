@@ -1,5 +1,7 @@
 import re
+from collections import defaultdict
 from datetime import datetime
+from typing import Union
 
 import pandas as pd
 import yaml
@@ -10,13 +12,9 @@ from cedar.client import CedarClient
 from core.logger import get_logger
 from covid_portal.covid_portal_client import PortalClient
 from dcat_exports.cedar_source_data import CedarAdminInstance
-from dcat_exports.export_controller import (
-    CedarConfig,
-    CedarFieldError,
-    ExportController,
-)
-from dcat_exports.export_utils import get_object_recursively
-from models.bycovid_models import VCARD, DCATDataSet, VCard
+from dcat_exports.export_controller import CedarConfig, ExportController
+from fdp.client import FDPClient
+from models.bycovid_models import VCARD, DCATDataSet, DCATDistribution, VCard
 from orcid.orcid_client import OrcidClient
 
 logger = get_logger()
@@ -60,17 +58,6 @@ ADMIN_TEMPLATE_MAPPING = {
     ),
 }
 
-DIST_MAPPING = {
-    # "datasetDate": ("http://purl.org/dc/terms/issued"),
-    DCTERMS.format: ("http://purl.org/dc/terms/conformsTo",),
-    # "distributionMediaType": "http://www.w3.org/ns/dcat#mediaType",
-    DCTERMS.title: ("http://purl.org/dc/terms/title",),
-    # "accessService": "http://www.w3.org/ns/dcat#accessService",
-    DCTERMS.description: ("http://purl.org/dc/terms/description",),
-    DCTERMS.license: ("http://purl.org/dc/terms/license",),
-    DCAT.accessURL: ("http://www.w3.org/ns/dcat#accessURL",),
-}
-
 # As per documentation https://support.orcid.org/hc/en-us/articles/360006897674-Structure-of-the-ORCID-Identifier
 # ORCID iDs are typically the 16-digit identifiers are assigned between 0000-0001-5000-0007 and 0000-0003-5000-0001,
 # or between 0009-0000-0000-0000 and 0009-0010-0000-0000. "X" can be at the end.
@@ -78,6 +65,14 @@ ORCID_PATTERN = re.compile(
     "^https?:\/\/orcid\.org\/((0000-000(?:1-[5-9]|2-[0-9]|3-[0-4])\d{3}-\d{3}[\dX]?)|(0009-00[0-1](?:[0-9]-[0-9])\d{"
     "3}-\d{3}[\dX]?))"
 )
+
+ZONMW_ONTOLOGY = "http://purl.org/zonmw/covid19"
+ZONMW_ONTOLOGY_COVID_FOCUS_AREA_AUTHORS = [
+    URIRef("https://orcid.org/0000-0002-7160-5942"),
+    URIRef("https://orcid.org/0000-0003-2195-3997"),
+]
+HEALTH_RI_URL = URIRef("https://www.health-ri.nl")
+DCAT_MEDIATYPE = "https://w3id.org/spar/mediatype"
 
 
 class ByCovidConfig(metaclass=CedarConfig):
@@ -92,27 +87,6 @@ class PortalEndPoints:
     project = "/p/Project"
     project_overview = f"{project}Overview"
     focus_area_filter = f"{project_overview}?focusarea="
-
-
-def find_target_predicate_chain_values(
-    mapping_table: dict,
-    source_subject: URIRef,
-    target_subject: URIRef,
-    graph: Graph,
-    export: Graph,
-) -> None:
-    for target_predicate, mapping in mapping_table.items():
-        result = [
-            record[0]
-            for record in get_object_recursively(mapping, source_subject, graph)
-        ]
-
-        if result is None:
-            raise CedarFieldError(
-                f"Could not find target value for predicate chain {mapping}"
-            )
-        for node in result:
-            export.add((target_subject, URIRef(target_predicate), node))
 
 
 def user_id_to_vcard(creator_item, admin_instance_id, orcid_client):
@@ -133,16 +107,35 @@ def user_id_to_vcard(creator_item, admin_instance_id, orcid_client):
     return v_card
 
 
-def export_admin_data_to_dataset(admin_instance, subject, catalog_dict, orcid_client):
+def export_admin_data_to_dataset(
+    admin_instance,
+    subject,
+    catalog_dict,
+    orcid_client,
+    cedar_client,
+    fdp_catalog_to_subj_dict,
+):
     title = admin_instance.get_title(
         ADMIN_TEMPLATE_MAPPING[DCTERMS.title],
         language_predicate=ADMIN_TEMPLATE_MAPPING["language"][-1],
     )
-    creator = admin_instance.get_attribute(ADMIN_TEMPLATE_MAPPING[DCTERMS.creator])
+
+    creator_orcid = admin_instance.get_attribute(
+        ADMIN_TEMPLATE_MAPPING[DCTERMS.creator]
+    )
+    # values with space like "https://orcid.org/ 0000-0002-9614-2577" do not appear in the graph then query from json
+    if not creator_orcid:
+        templ = cedar_client.get_template_instance(
+            admin_instance.admin_instance_id
+        ).json()
+        creator_orcid = [
+            URIRef(elem["ORCID of Person completing this Form"]["@id"].replace(" ", ""))
+            for elem in templ["Other"]["ORCID of Person completing this Form"]
+        ]
     # convert to VCard
     creator = [
         user_id_to_vcard(creator_item, admin_instance.admin_instance_id, orcid_client)
-        for creator_item in creator
+        for creator_item in creator_orcid
         if not isinstance(creator_item, BNode)
     ]
 
@@ -164,9 +157,9 @@ def export_admin_data_to_dataset(admin_instance, subject, catalog_dict, orcid_cl
 
     publisher = catalog_dict["publisher"]
     if pd.notnull(publisher):
-        publisher = URIRef(publisher)
+        publisher = [URIRef(publisher)]
     else:
-        publisher = None
+        publisher = creator_orcid
     keywords = []
     key_word = catalog_dict["keyword"]
     if key_word and isinstance(key_word, list):
@@ -187,6 +180,9 @@ def export_admin_data_to_dataset(admin_instance, subject, catalog_dict, orcid_cl
         publisher=publisher,
         keyword=keywords,
         theme=theme,
+        is_part_of=fdp_catalog_to_subj_dict[URIRef(catalog_dict["content_graph_id"])],
+        has_version=URIRef(admin_instance.admin_instance_id),
+        landing=subject,
     )
     return dataset
 
@@ -196,7 +192,9 @@ def write_datasets(
     export: Graph,
     map_table: pd.DataFrame,
     orcid_client: OrcidClient,
-) -> None:
+    fdp_client: FDPClient,
+    fdp_catalog_id_to_subj_dict: defaultdict,
+) -> defaultdict:
     export.bind("v", VCARD)
     map_table = map_table[
         [
@@ -211,6 +209,7 @@ def write_datasets(
     ].dropna(subset=["admin_graph_id"], axis="rows")
     admin_ids = map_table["admin_instance_id"].unique()
 
+    fdp_dataset_id_to_subj_dict = defaultdict()
     for admin_instance_id in admin_ids:
         admin_instance = CedarAdminInstance(admin_instance_id, client)
 
@@ -232,58 +231,119 @@ def write_datasets(
         for record in ds_list_of_records:
             subject = URIRef(record["admin_graph_id"])
             dataset = export_admin_data_to_dataset(
-                admin_instance, subject, record, orcid_client
+                admin_instance,
+                subject,
+                record,
+                orcid_client,
+                client,
+                fdp_catalog_id_to_subj_dict,
             )
             if str(dataset.title).startswith("TEST-"):
                 continue
-            export += dataset.to_graph(userinfo_format=VCARD.VCard)
+            ds = dataset.to_graph()
+            # export += dataset.to_graph(userinfo_format=VCARD.VCard)
+            try:
+                fdp_subject = fdp_client.create_and_publish(
+                    resource_type="dataset", metadata=ds
+                )
+                fdp_dataset_id_to_subj_dict[subject] = fdp_subject
+            except SystemExit:
+                logger.error(f"Failed to upload dataset {subject}")
+    return fdp_dataset_id_to_subj_dict
 
-            catalog_ids = ds_table["content_graph_id"].values
-            if catalog_ids.shape[0] > 0 and pd.notnull(catalog_ids[0]):
-                catalog_id = URIRef(catalog_ids[0])
-                if pd.notnull(catalog_id):
-                    export.add((catalog_id, DCAT.dataset, subject))
+
+def build_distribution(
+    client: CedarClient, instance_id: URIRef, subject: str, dataset_link: URIRef
+) -> Union[Graph, None]:
+    """
+    Gets required distribution data from Cedar and puts it together ino a distribution rdf graph
+    Parameters
+    ----------
+    client: CedarClient
+        API client class instance for Cedar
+    instance_id: URIRef
+        Cedar instance ID
+    subject: subject URI for export
+    dataset_link: FDP link of a pre-uploaded dataset
+    Returns
+    ------
+    Graph if no missing data and
+    None if a mandatory field is missing
+    """
+    dist_instance = client.get_template_instance(instance_id).json()
+    title = dist_instance["title"]["@value"]
+    media_type = dist_instance["distributionMediaType"]
+    distribution_format = media_type.get("@id")
+    if distribution_format:
+        distribution_format = URIRef(distribution_format)
+    description = dist_instance["description"]["@value"]
+    distribution_license = dist_instance["license"]
+    if distribution_license:
+        distribution_license = URIRef(distribution_license["@id"])
+    else:
+        distribution_license = None
+    access_url_list = dist_instance["accessURL"]
+    if isinstance(access_url_list, list) and access_url_list[0]:
+        access_url = [URIRef(x["@id"].strip("/")) for x in access_url_list]
+    elif isinstance(access_url_list, str) and access_url_list != "":
+        access_url = [URIRef(access_url_list.strip("/"))]
+    else:
+        logger.error(
+            f"Access URL is not provided for the following distribution: {instance_id}"
+        )
+        return
+    distr_graph = DCATDistribution(
+        uri=URIRef(subject),
+        title=Literal(title),
+        description=Literal(description),
+        distr_format=distribution_format,
+        distr_license=distribution_license,
+        is_part_of=dataset_link,
+        access_url=access_url,
+    )
+    return distr_graph.to_graph()
 
 
-def write_dist(client, export, mapping_table):
-    distr_df = mapping_table.loc[
+def write_distributions(
+    client, mapping_table, fdp_dataset_id_to_subj_mapping, fdp_client
+):
+    distribution_df = mapping_table.loc[
         pd.notnull(mapping_table["admin_graph_id"])
         & pd.notnull(mapping_table["distribution_id"])
         & (mapping_table["distribution_id"].astype(str) != "")
     ][["admin_graph_id", "distribution_id"]].drop_duplicates()
-    distr_df["count"] = distr_df.groupby(["admin_graph_id"], dropna=False)[
-        "distribution_id"
-    ].transform("nunique")
-    distr_df["subject"] = distr_df["admin_graph_id"].apply(
+    distribution_df["count"] = distribution_df.groupby(
+        ["admin_graph_id"], dropna=False
+    )["distribution_id"].transform("nunique")
+    distribution_df["subject"] = distribution_df["admin_graph_id"].apply(
         lambda x: f"{x}-distribution" if "#" in x else f"{x}#distribution"
     )
-    distr_df.loc[(distr_df["count"].astype(int) > 1), "subject"] = (
-        distr_df["subject"].astype(str)
+    distribution_df.loc[(distribution_df["count"].astype(int) > 1), "subject"] = (
+        distribution_df["subject"].astype(str)
         + "-"
-        + distr_df.groupby(["admin_graph_id"])["distribution_id"]
+        + distribution_df.groupby(["admin_graph_id"])["distribution_id"]
         .transform("cumcount")
         .astype(str)
     )
     distr_to_admin = pd.Series(
-        distr_df["subject"].values, index=distr_df["distribution_id"]
+        distribution_df["subject"].values, index=distribution_df["distribution_id"]
     ).to_dict()
     for instance_id, subject in distr_to_admin.items():
-        dataset_link = URIRef(subject.split("distribution")[0].rstrip("#-"))
-        subject = URIRef(subject)
-        export.add((dataset_link, DCAT.distribution, subject))
-        dist_instance = client.get_template_instance_jsonld(instance_id)
-        dist_graph = Graph().parse(data=dist_instance, format="json-ld")
-        export.add((subject, RDF.type, DCAT.Distribution))
-        find_target_predicate_chain_values(
-            mapping_table=DIST_MAPPING,
-            source_subject=URIRef(instance_id),
-            target_subject=subject,
-            graph=dist_graph,
-            export=export,
-        )
+        dataset_link = fdp_dataset_id_to_subj_mapping[
+            URIRef(subject.split("distribution")[0].rstrip("#-"))
+        ]
+        dist_graph = build_distribution(client, instance_id, subject, dataset_link)
+        if dist_graph is None:
+            continue
+        try:
+            fdp_client.create_and_publish(
+                resource_type="distribution", metadata=dist_graph
+            )
+        except SystemExit:
+            logger.error(f"Failed to upload distribution: {subject}")
 
 
-def write_top_level(export, portal_url):
+def build_top_level_catalog(export, portal_url, fdp_url) -> Graph:
     """Adds top-level Catalog pointing to Covid-19 portal"""
     title = "COVID-19 related data initiatives - Project overview"
     description = (
@@ -303,12 +363,15 @@ def write_top_level(export, portal_url):
     export.add((portal_url, DCTERMS.title, Literal(title)))
     export.add((portal_url, DCTERMS.description, Literal(description)))
     export.add((portal_url, DCTERMS.issued, Literal(issued, datatype=XSD.date)))
+    export.add((portal_url, DCTERMS.isPartOf, fdp_url))
+    export.add((portal_url, DCTERMS.publisher, HEALTH_RI_URL))
     for keyword in keywords:
         export.add((portal_url, DCAT.keyword, Literal(keyword)))
     export.add((portal_url, FOAF.homepage, URIRef(homepage)))
+    return export
 
 
-def write_catalogs(cedar_export, export_graph, portal_url):
+def write_catalogs(cedar_export, export_graph, portal_url, fdp_client):
     focus_area_frame = (
         cedar_export.overall_mapping.copy()[
             ["content_graph_id", "focus_area", "focus_area_id"]
@@ -317,11 +380,15 @@ def write_catalogs(cedar_export, export_graph, portal_url):
         .drop_duplicates()
     )
 
+    fdp_url = fdp_client.base_url
     content_items = focus_area_frame.to_dict("records")
+    publishers = ZONMW_ONTOLOGY_COVID_FOCUS_AREA_AUTHORS
+    sub_links = defaultdict()
     for item in content_items:
+        focus_area_graph = Graph()
         subject = URIRef(item["content_graph_id"])
-        export_graph.add((subject, RDF.type, DCAT.Catalog))
-        export_graph.add(
+        focus_area_graph.add((subject, RDF.type, DCAT.Catalog))
+        focus_area_graph.add(
             (
                 subject,
                 DCTERMS.title,
@@ -331,13 +398,39 @@ def write_catalogs(cedar_export, export_graph, portal_url):
                 ),
             )
         )
-        export_graph.add((subject, DCAT.theme, URIRef(item["focus_area_id"])))
-        export_graph.add((portal_url, DCAT.catalog, subject))
+        focus_area_graph.add(
+            (
+                subject,
+                DCTERMS.description,
+                Literal(
+                    f"focus area: {item['focus_area']}",
+                    datatype=XSD.string,
+                ),
+            )
+        ),
+        focus_area_graph.add((subject, DCTERMS.isPartOf, fdp_url))
+        focus_area_graph.add((subject, DCAT.theme, URIRef(item["focus_area_id"])))
+        focus_area_graph.add((subject, DCTERMS.hasVersion, URIRef(ZONMW_ONTOLOGY)))
+        focus_area_graph.add((subject, FOAF.homepage, subject))
+        for publisher in publishers:
+            focus_area_graph.add((subject, DCTERMS.publisher, publisher))
+        try:
+            fdp_subject = fdp_client.create_and_publish(
+                resource_type="catalog", metadata=focus_area_graph
+            )
+            sub_links[subject] = fdp_subject
+            export_graph.add((portal_url, DCTERMS.hasPart, fdp_subject))
+        except SystemExit:
+            logger.error(f"Failed to upload catalog: {subject}")
+    try:
+        fdp_client.create_and_publish(resource_type="catalog", metadata=export_graph)
+    except SystemExit:
+        logger.error(f"Failed to upload catalog {subject}")
+    return sub_links
 
 
 def get_portal_project_ids(portal_client: PortalClient, portal_url):
     response = portal_client.get_projects_list()
-    # portal_url = str(portal_url)
     if response:
         portal_df = pd.DataFrame(data=response.json()["Projects"])[
             ["UniqueId", "CedarAdminTemplateInstanceId"]
@@ -358,13 +451,15 @@ def get_portal_project_ids(portal_client: PortalClient, portal_url):
     return portal_df
 
 
-def build_export_graph(client, orcid_client, portal_client, portal_url):
+def build_export_graph(
+    client, orcid_client, portal_client, portal_url, fdp_url, fdp_client
+):
     export_graph = Graph()
     # bind namespaces
     export_graph.bind("dcat", DCAT)
     export_graph.bind("dcterms", DCTERMS)
 
-    write_top_level(export_graph, portal_url)
+    build_top_level_catalog(export_graph, portal_url, fdp_url)
 
     cedar_export = ExportController(client, ByCovidConfig)
     cedar_export.overall_mapping = cedar_export.get_catalogs_data()
@@ -381,19 +476,33 @@ def build_export_graph(client, orcid_client, portal_client, portal_url):
         "content_graph_id"
     ].apply(URIRef)
 
-    write_catalogs(
-        cedar_export=cedar_export, export_graph=export_graph, portal_url=portal_url
+    # DO NOT FORGET to REMOVE THIS FILTER!!
+    # cedar_export.overall_mapping = cedar_export.overall_mapping.loc[
+    #     pd.notnull(cedar_export.overall_mapping["admin_graph_id"])
+    #     & pd.notnull(cedar_export.overall_mapping["distribution_id"])
+    #     & (cedar_export.overall_mapping["distribution_id"].astype(str) != "")
+    # ]
+    fdp_catalog_id_to_subj_dict = write_catalogs(
+        cedar_export=cedar_export,
+        export_graph=export_graph,
+        portal_url=portal_url,
+        fdp_client=fdp_client,
     )
 
-    write_datasets(
+    ds_sub_l = write_datasets(
         client=client,
         export=export_graph,
         map_table=cedar_export.overall_mapping,
         orcid_client=orcid_client,
+        fdp_client=fdp_client,
+        fdp_catalog_id_to_subj_dict=fdp_catalog_id_to_subj_dict,
     )
 
-    write_dist(
-        client=client, export=export_graph, mapping_table=cedar_export.overall_mapping
+    write_distributions(
+        client=client,
+        mapping_table=cedar_export.overall_mapping,
+        fdp_dataset_id_to_subj_mapping=ds_sub_l,
+        fdp_client=fdp_client,
     )
 
     return export_graph
@@ -404,26 +513,37 @@ def export_dcat():
     client = CedarClient(
         api_key=config["cedar"]["apikey"], query_limit=config["cedar"].get("limit")
     )
-    orcid = OrcidClient(token=config["orcid"]["token"], base_url="https://orcid.org")
+    orcid = OrcidClient(
+        token=config["orcid"]["token"], base_url=config["orcid"]["base_url"]
+    )
     portal_url = config["covid_portal"]["base_url"]
     portal_client = PortalClient(
         base_url=f"{portal_url}/rest",
         username=config["covid_portal"]["username"],
         password=config["covid_portal"]["password"],
     )
+    fdp_url = URIRef(config["fdp"]["base_url"])
+
+    fdp_client = FDPClient(
+        base_url=fdp_url,
+        username=config["fdp"]["username"],
+        password=config["fdp"]["password"],
+    )
     export = build_export_graph(
         client=client,
         orcid_client=orcid,
         portal_client=portal_client,
         portal_url=URIRef(portal_url),
+        fdp_url=fdp_url,
+        fdp_client=fdp_client,
     )
-    export.serialize(
-        destination=f"../example-output/{datetime.now().date()}_output.ttl"
-    )
-    export.serialize(
-        destination=f"../example-output/{datetime.now().date()}_output.xml"
-    )
-    print(export.serialize())
+    # export.serialize(
+    #     destination=f"../example-output/{datetime.now().date()}_output.ttl"
+    # )
+    # export.serialize(
+    #     destination=f"../example-output/{datetime.now().date()}_output.xml"
+    # )
+    # print(export.serialize())
 
 
 if __name__ == "__main__":
