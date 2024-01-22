@@ -31,15 +31,20 @@ class DCATDataSet(BaseModel):
     uri: URIRef
     title: List[Literal]
     description: Literal
-    creator: Union[List[URIRef], List[VCard]]
+    creator: Optional[Union[List[URIRef], List[VCard]]]
     start_date: Optional[Literal]
     end_date: Optional[Literal]
-    contact_point: Union[List[URIRef], List[VCard]]
+    contact_point: Optional[Union[List[URIRef], List[VCard]]]
     publisher: Union[List[URIRef], URIRef]
     keyword: Optional[List[Literal]] = Field(default_factory=list)
     theme: Optional[List[URIRef]] = Field(default_factory=list)
+    is_referenced_by: Optional[List[URIRef]] = Field(default_factory=list)
+    issued: Literal
+    modified: Literal
     is_part_of: URIRef
-    has_version: URIRef  # Should be dcat:version in the next version of the FDP release(aiming for 1.18.0)
+    has_version: Optional[
+        URIRef
+    ]  # Should be dcat:version in the next version of the FDP release(aiming for 1.18.0)
     landing: URIRef
 
     @validator("creator", "contact_point")
@@ -58,6 +63,8 @@ class DCATDataSet(BaseModel):
         subject = self.uri
         # For dcterms:identifier
         identifier = subject.rsplit("/", maxsplit=1)[-1]
+        if "=" in subject:
+            identifier = subject.rsplit("=", maxsplit=1)[-1]
 
         graph.add(
             (subject, DCTERMS.identifier, Literal(identifier, datatype=XSD.token))
@@ -65,20 +72,22 @@ class DCATDataSet(BaseModel):
         graph.add((subject, RDF.type, DCAT.Dataset))
         for title in self.title:
             graph.add((subject, DCTERMS.title, title))
-        self.add_vcard_info(
-            attribute_name="creator",
-            graph=graph,
-            subject=subject,
-            predicate=DCTERMS.creator,
-            userinfo_format=userinfo_format,
-        )
-        self.add_vcard_info(
-            attribute_name="contact_point",
-            graph=graph,
-            subject=subject,
-            predicate=DCAT.contactPoint,
-            userinfo_format=userinfo_format,
-        )
+        if self.creator:
+            self.add_vcard_info(
+                attribute_name="creator",
+                graph=graph,
+                subject=subject,
+                predicate=DCTERMS.creator,
+                userinfo_format=userinfo_format,
+            )
+        if self.contact_point:
+            self.add_vcard_info(
+                attribute_name="contact_point",
+                graph=graph,
+                subject=subject,
+                predicate=DCAT.contactPoint,
+                userinfo_format=userinfo_format,
+            )
         date_node = BNode()
         graph.add((subject, DCTERMS.temporal, date_node))
         graph.add((date_node, RDF.type, DCTERMS.PeriodOfTime))
@@ -92,12 +101,18 @@ class DCATDataSet(BaseModel):
         for publisher in self.publisher:
             graph.add((subject, DCTERMS.publisher, publisher))
         graph.add((subject, DCTERMS.isPartOf, self.is_part_of))
-        graph.add((subject, DCTERMS.hasVersion, self.has_version))
+        if self.has_version:
+            graph.add((subject, DCTERMS.hasVersion, self.has_version))
+        if self.is_referenced_by:
+            for reference in self.is_referenced_by:
+                graph.add((subject, DCTERMS.isReferencedBy, reference))
         graph.add((subject, DCAT.landingPage, self.landing))
         for key_w in self.keyword:
             graph.add((subject, DCAT.keyword, key_w))
         for theme in self.theme:
             graph.add((subject, DCAT.theme, theme))
+        graph.add((subject, DCTERMS.issued, self.issued))
+        graph.add((subject, DCTERMS.modified, self.modified))
 
         graph.bind("dcat", DCAT)
         graph.bind("dcterms", DCTERMS)
@@ -176,7 +191,7 @@ class DCATDistribution(BaseModel):
         graph.add((subject, DCTERMS.title, self.title))
         graph.add((subject, DCTERMS.description, self.description))
         if self.distr_format:
-            graph.add((subject, DCTERMS.format, self.distr_format))
+            graph.add((subject, DCAT.mediaType, self.distr_format))
         graph.add((subject, DCTERMS.isPartOf, self.is_part_of))
         if self.distr_license:
             graph.add((subject, DCTERMS.license, self.distr_license))
