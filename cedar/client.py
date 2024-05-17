@@ -1,4 +1,6 @@
-from typing import Iterator, List
+import logging
+from collections import defaultdict
+from typing import Dict, Iterator, List
 
 from rdflib import BNode, Graph, Literal, Namespace, URIRef
 from rdflib.namespace import RDF, RDFS
@@ -10,12 +12,16 @@ SH = Namespace("http://www.w3.org/ns/shacl#")
 DASH = Namespace("http://datashapes.org/dash#")
 
 
+log = logging.getLogger(__name__)
+
+
 class CedarEndPoints:
     base = "https://repo.metadatacenter.org"
     base_resource = "https://resource.metadatacenter.org"
     templates = f"{base}/templates"
     template_instances = f"{base}/template-instances"
     search = f"{base_resource}/search"
+    users = f"{base_resource}/users"
 
 
 class CedarClient(BasicAPIClient):
@@ -79,6 +85,14 @@ class CedarClient(BasicAPIClient):
             response = response.json()
             result += [resource["@id"] for resource in response["resources"]]
         return result
+
+    def get_user_info(self, user_id: str) -> Dict:
+        users = self.get(CedarEndPoints.users).json()
+        for item in users["users"]:
+            if item["@id"] == user_id:
+                return item
+        log.warning(f"No user with id {user_id} in Cedar")
+        return defaultdict()
 
 
 class Schema:

@@ -1,12 +1,18 @@
+import logging
 import re
 from collections import defaultdict
 from datetime import datetime
+from enum import Enum
 from typing import Union
 
 import pandas as pd
 import yaml
-from rdflib import DCAT, DCTERMS, FOAF, RDF, XSD, Graph, URIRef
+from rdflib import DCAT, DCTERMS, XSD, Graph, URIRef
 from rdflib.term import BNode, Literal
+from sempyro import LiteralField
+from sempyro.foaf import Agent
+from sempyro.time import PeriodOfTime
+from sempyro.vcard import VCARD, VCard
 
 from cedar.client import CedarClient
 from core.logger import get_logger
@@ -14,7 +20,7 @@ from covid_portal.covid_portal_client import PortalClient
 from dcat_exports.cedar_source_data import CedarAdminInstance
 from dcat_exports.export_controller import CedarConfig, ExportController
 from fdp.client import FDPClient
-from models.bycovid_models import VCARD, DCATDataSet, DCATDistribution, VCard
+from models.bycovid_models import FDPCatalog, FDPDataset, FDPDistribution
 from orcid.orcid_client import OrcidClient
 
 logger = get_logger()
@@ -56,6 +62,7 @@ ADMIN_TEMPLATE_MAPPING = {
         "https://schema.metadatacenter.org/properties/44d6b2d1-24fa-4ee2-85ff-c9bc8565bddc",
         "https://schema.metadatacenter.org/properties/e6ba0001-590d-4400-a296-683dee6bf72a",
     ),
+    "createdOn": (),
 }
 
 # As per documentation https://support.orcid.org/hc/en-us/articles/360006897674-Structure-of-the-ORCID-Identifier
@@ -68,8 +75,8 @@ ORCID_PATTERN = re.compile(
 
 ZONMW_ONTOLOGY = "http://purl.org/zonmw/covid19"
 ZONMW_ONTOLOGY_COVID_FOCUS_AREA_AUTHORS = [
-    URIRef("https://orcid.org/0000-0002-7160-5942"),
-    URIRef("https://orcid.org/0000-0003-2195-3997"),
+    Agent(name=["Beliën J.A."], identifier="https://orcid.org/0000-0002-7160-5942"),
+    Agent(name=["Barbara Magagna"], identifier="https://orcid.org/0000-0003-2195-3997"),
 ]
 HEALTH_RI_URL = URIRef("https://www.health-ri.nl")
 DCAT_MEDIATYPE = "https://w3id.org/spar/mediatype"
@@ -89,7 +96,15 @@ class PortalEndPoints:
     focus_area_filter = f"{project_overview}?focusarea="
 
 
-def user_id_to_vcard(creator_item, admin_instance_id, orcid_client):
+class UserTypes(Enum):
+    agent = "agent"
+    vcard = "vcard"
+
+
+def user_id_to_vcard_or_agent(
+    creator_item, admin_instance_id, orcid_client, return_type: str
+):
+    return_type = UserTypes(return_type)
     creator_item = str(creator_item).rstrip(",.; ?/\\")
     # To fix entries like https://orcid.org/my-orcid?orcid=000X-XXXX-XXXX-XXXX
     if "?orcid=" in creator_item:
@@ -103,13 +118,31 @@ def user_id_to_vcard(creator_item, admin_instance_id, orcid_client):
         full_name = Literal(full_name)
     else:
         full_name = BNode()
-    v_card = VCard(full_name=full_name, uid=URIRef(creator_item))
-    return v_card
+    if return_type == UserTypes.vcard:
+        user_object = VCard(
+            full_name=[LiteralField(value=full_name)], hasUID=URIRef(creator_item)
+        )
+    elif return_type == UserTypes.agent:
+        user_object = Agent(
+            name=[LiteralField(value=full_name)], identifier=creator_item
+        )
+    else:
+        raise ValueError(
+            f"Incorrect return type {return_type}: `agent` or `vcard` are expected"
+        )
+    return user_object
+
+
+def get_user_info_from_cedar(cedar_client, user_id) -> Agent:
+    user_info = cedar_client.get_user_info(user_id)
+    user_obj = Agent(
+        name=[LiteralField(value=user_info["schema:name"])], identifier=user_id
+    )
+    return user_obj
 
 
 def export_admin_data_to_dataset(
     admin_instance,
-    subject,
     catalog_dict,
     orcid_client,
     cedar_client,
@@ -123,21 +156,41 @@ def export_admin_data_to_dataset(
     creator_orcid = admin_instance.get_attribute(
         ADMIN_TEMPLATE_MAPPING[DCTERMS.creator]
     )
+
+    admin_template = cedar_client.get_template_instance(
+        admin_instance.admin_instance_id
+    ).json()
     # values with space like "https://orcid.org/ 0000-0002-9614-2577" do not appear in the graph then query from json
-    if not creator_orcid:
-        templ = cedar_client.get_template_instance(
-            admin_instance.admin_instance_id
-        ).json()
-        creator_orcid = [
-            URIRef(elem["ORCID of Person completing this Form"]["@id"].replace(" ", ""))
-            for elem in templ["Other"]["ORCID of Person completing this Form"]
+    creator = None
+    if not creator_orcid or any([isinstance(x, BNode) for x in creator_orcid]):
+        try:
+            creator_orcid = [
+                URIRef(
+                    elem["ORCID of Person completing this Form"]["@id"].replace(" ", "")
+                )
+                for elem in admin_template["Other"][
+                    "ORCID of Person completing this Form"
+                ]
+            ]
+        except (KeyError, AttributeError):
+            logging.warning(
+                f"No ORCID information provided for {admin_instance.admin_instance_id}, creator will be "
+                f"solved based on cedar info"
+            )
+            cedar_user_id = admin_template["pav:createdBy"]
+            creator = [get_user_info_from_cedar(cedar_client, cedar_user_id)]
+    if creator is None:
+        # convert to VCard
+        creator = [
+            user_id_to_vcard_or_agent(
+                creator_item,
+                admin_instance.admin_instance_id,
+                orcid_client,
+                return_type="agent",
+            )
+            for creator_item in creator_orcid
+            if not isinstance(creator_item, BNode)
         ]
-    # convert to VCard
-    creator = [
-        user_id_to_vcard(creator_item, admin_instance.admin_instance_id, orcid_client)
-        for creator_item in creator_orcid
-        if not isinstance(creator_item, BNode)
-    ]
 
     dates = admin_instance.get_pared_attributes(
         ADMIN_TEMPLATE_MAPPING["start"], ADMIN_TEMPLATE_MAPPING["end"][-1]
@@ -150,16 +203,24 @@ def export_admin_data_to_dataset(
         ADMIN_TEMPLATE_MAPPING[DCAT.contactPoint]
     )
     primary_contact = [
-        user_id_to_vcard(contact, admin_instance.admin_instance_id, orcid_client)
+        user_id_to_vcard_or_agent(
+            contact, admin_instance.admin_instance_id, orcid_client, return_type="vcard"
+        )
         for contact in primary_contact
         if not isinstance(contact, BNode)
     ]
 
     publisher = catalog_dict["publisher"]
     if pd.notnull(publisher):
-        publisher = [URIRef(publisher)]
-    else:
+        publisher = [
+            URIRef(publisher.replace("www.", "http://"))
+            if publisher.startswith("www.")
+            else URIRef(publisher)
+        ]
+    elif not any([isinstance(x, BNode) for x in creator_orcid]):
         publisher = creator_orcid
+    else:
+        publisher = [admin_template["pav:createdBy"]]
     keywords = []
     key_word = catalog_dict["keyword"]
     if key_word and isinstance(key_word, list):
@@ -169,20 +230,24 @@ def export_admin_data_to_dataset(
     if themes and isinstance(key_word, list):
         theme = [URIRef(i) for i in themes if pd.notnull(i)]
 
-    dataset = DCATDataSet(
-        uri=subject,
+    dataset = FDPDataset(
         title=title,
         creator=creator,
-        description=Literal(catalog_dict["description"]),
-        start_date=start_date,
-        end_date=end_date,
+        description=[Literal(catalog_dict["description"])],
+        temporal_coverage=[PeriodOfTime(start_date=start_date, end_date=end_date)],
         contact_point=primary_contact,
         publisher=publisher,
         keyword=keywords,
+        release_date=datetime.strptime(
+            admin_template["pav:createdOn"], "%Y-%m-%dT%H:%M:%S%z"
+        ),
+        identifier=[admin_instance.admin_instance_id],
+        update_date=datetime.strptime(
+            admin_template["pav:lastUpdatedOn"], "%Y-%m-%dT%H:%M:%S%z"
+        ),
         theme=theme,
-        is_part_of=fdp_catalog_to_subj_dict[URIRef(catalog_dict["content_graph_id"])],
-        has_version=URIRef(admin_instance.admin_instance_id),
-        landing=subject,
+        is_part_of=[fdp_catalog_to_subj_dict[URIRef(catalog_dict["content_graph_id"])]],
+        landing_page=[URIRef(admin_instance.admin_instance_id)],
     )
     return dataset
 
@@ -229,10 +294,9 @@ def write_datasets(
         )
         ds_list_of_records = ds_table.to_dict("records")
         for record in ds_list_of_records:
-            subject = URIRef(record["admin_graph_id"])
+            subject = URIRef(admin_instance_id)
             dataset = export_admin_data_to_dataset(
                 admin_instance,
-                subject,
                 record,
                 orcid_client,
                 client,
@@ -240,7 +304,7 @@ def write_datasets(
             )
             if str(dataset.title).startswith("TEST-"):
                 continue
-            ds = dataset.to_graph()
+            ds = dataset.to_graph(URIRef(subject))
             # export += dataset.to_graph(userinfo_format=VCARD.VCard)
             try:
                 fdp_subject = fdp_client.create_and_publish(
@@ -292,16 +356,18 @@ def build_distribution(
             f"Access URL is not provided for the following distribution: {instance_id}"
         )
         return
-    distr_graph = DCATDistribution(
-        uri=URIRef(subject),
-        title=Literal(title),
-        description=Literal(description),
-        distr_format=distribution_format,
-        distr_license=distribution_license,
-        is_part_of=dataset_link,
+    distribution = FDPDistribution(
+        title=[LiteralField(value=title)],
+        description=[LiteralField(value=description)],
+        is_part_of=[dataset_link],
         access_url=access_url,
     )
-    return distr_graph.to_graph()
+    if distribution_format is not None:
+        distribution.media_type = distribution_format
+    if distribution_license is not None:
+        distribution.license = (distribution_license,)
+
+    return distribution.to_graph(URIRef(subject))
 
 
 def write_distributions(
@@ -343,7 +409,7 @@ def write_distributions(
             logger.error(f"Failed to upload distribution: {subject}")
 
 
-def build_top_level_catalog(export, portal_url, fdp_url) -> Graph:
+def build_top_level_catalog(portal_url: URIRef, fdp_url: URIRef) -> Graph:
     """Adds top-level Catalog pointing to Covid-19 portal"""
     title = "COVID-19 related data initiatives - Project overview"
     description = (
@@ -355,20 +421,20 @@ def build_top_level_catalog(export, portal_url, fdp_url) -> Graph:
         "overview of COVID-19 related initiatives, provided on this site."
     )
     issued = datetime.now().date()
-    keywords = ["COVID-19"]
+    keywords = [LiteralField(value="COVID-19")]
     homepage = f"{portal_url}{PortalEndPoints.project_overview}"
 
-    export.bind("foaf", FOAF)
-    export.add((portal_url, RDF.type, DCAT.Catalog))
-    export.add((portal_url, DCTERMS.title, Literal(title)))
-    export.add((portal_url, DCTERMS.description, Literal(description)))
-    export.add((portal_url, DCTERMS.issued, Literal(issued, datatype=XSD.date)))
-    export.add((portal_url, DCTERMS.isPartOf, fdp_url))
-    export.add((portal_url, DCTERMS.publisher, HEALTH_RI_URL))
-    for keyword in keywords:
-        export.add((portal_url, DCAT.keyword, Literal(keyword)))
-    export.add((portal_url, FOAF.homepage, URIRef(homepage)))
-    return export
+    catalog = FDPCatalog(
+        title=[title],
+        description=[description],
+        publisher=[HEALTH_RI_URL],
+        keyword=keywords,
+        is_part_of=[fdp_url],
+        release_date=issued,
+        landing_page=[homepage],
+    )
+    export_graph = catalog.to_graph(subject=portal_url)
+    return export_graph
 
 
 def write_catalogs(cedar_export, export_graph, portal_url, fdp_client):
@@ -385,35 +451,24 @@ def write_catalogs(cedar_export, export_graph, portal_url, fdp_client):
     publishers = ZONMW_ONTOLOGY_COVID_FOCUS_AREA_AUTHORS
     sub_links = defaultdict()
     for item in content_items:
-        focus_area_graph = Graph()
+
         subject = URIRef(item["content_graph_id"])
-        focus_area_graph.add((subject, RDF.type, DCAT.Catalog))
-        focus_area_graph.add(
-            (
-                subject,
-                DCTERMS.title,
-                Literal(
-                    item["focus_area"],
-                    datatype=XSD.string,
-                ),
-            )
+
+        title = LiteralField(value=item["focus_area"], datatype=XSD.string)
+        description = LiteralField(
+            value=f"focus area: {title.value}", datatype=XSD.string
         )
-        focus_area_graph.add(
-            (
-                subject,
-                DCTERMS.description,
-                Literal(
-                    f"focus area: {item['focus_area']}",
-                    datatype=XSD.string,
-                ),
-            )
-        ),
-        focus_area_graph.add((subject, DCTERMS.isPartOf, fdp_url))
-        focus_area_graph.add((subject, DCAT.theme, URIRef(item["focus_area_id"])))
-        focus_area_graph.add((subject, DCTERMS.hasVersion, URIRef(ZONMW_ONTOLOGY)))
-        focus_area_graph.add((subject, FOAF.homepage, subject))
-        for publisher in publishers:
-            focus_area_graph.add((subject, DCTERMS.publisher, publisher))
+
+        focus_area_catalog = FDPCatalog(
+            title=[title],
+            description=[description],
+            publisher=publishers,
+            is_part_of=[fdp_url],
+            themes=[URIRef(item["focus_area_id"])],
+            has_version=[URIRef(ZONMW_ONTOLOGY)],
+            landing_page=[subject],
+        )
+        focus_area_graph = focus_area_catalog.to_graph(subject)
         try:
             fdp_subject = fdp_client.create_and_publish(
                 resource_type="catalog", metadata=focus_area_graph
@@ -425,7 +480,7 @@ def write_catalogs(cedar_export, export_graph, portal_url, fdp_client):
     try:
         fdp_client.create_and_publish(resource_type="catalog", metadata=export_graph)
     except SystemExit:
-        logger.error(f"Failed to upload catalog {subject}")
+        logger.error(f"Failed to upload catalog {portal_url}")
     return sub_links
 
 
@@ -454,12 +509,7 @@ def get_portal_project_ids(portal_client: PortalClient, portal_url):
 def build_export_graph(
     client, orcid_client, portal_client, portal_url, fdp_url, fdp_client
 ):
-    export_graph = Graph()
-    # bind namespaces
-    export_graph.bind("dcat", DCAT)
-    export_graph.bind("dcterms", DCTERMS)
-
-    build_top_level_catalog(export_graph, portal_url, fdp_url)
+    export_graph = build_top_level_catalog(portal_url, fdp_url)
 
     cedar_export = ExportController(client, ByCovidConfig)
     cedar_export.overall_mapping = cedar_export.get_catalogs_data()
@@ -476,12 +526,6 @@ def build_export_graph(
         "content_graph_id"
     ].apply(URIRef)
 
-    # DO NOT FORGET to REMOVE THIS FILTER!!
-    # cedar_export.overall_mapping = cedar_export.overall_mapping.loc[
-    #     pd.notnull(cedar_export.overall_mapping["admin_graph_id"])
-    #     & pd.notnull(cedar_export.overall_mapping["distribution_id"])
-    #     & (cedar_export.overall_mapping["distribution_id"].astype(str) != "")
-    # ]
     fdp_catalog_id_to_subj_dict = write_catalogs(
         cedar_export=cedar_export,
         export_graph=export_graph,
@@ -537,13 +581,6 @@ def export_dcat():
         fdp_url=fdp_url,
         fdp_client=fdp_client,
     )
-    # export.serialize(
-    #     destination=f"../example-output/{datetime.now().date()}_output.ttl"
-    # )
-    # export.serialize(
-    #     destination=f"../example-output/{datetime.now().date()}_output.xml"
-    # )
-    # print(export.serialize())
 
 
 if __name__ == "__main__":
