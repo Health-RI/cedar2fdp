@@ -10,7 +10,9 @@ import yaml
 from rdflib import DCAT, DCTERMS, XSD, Graph, URIRef
 from rdflib.term import BNode, Literal
 from sempyro import LiteralField
+from sempyro.dcat import DCATDataset, DCATDistribution
 from sempyro.foaf import Agent
+from sempyro.hri_dcat import HRICatalog
 from sempyro.time import PeriodOfTime
 from sempyro.vcard import VCARD, VCard
 
@@ -20,7 +22,6 @@ from covid_portal.covid_portal_client import PortalClient
 from dcat_exports.cedar_source_data import CedarAdminInstance
 from dcat_exports.export_controller import CedarConfig, ExportController
 from fdp.client import FDPClient
-from models.bycovid_models import FDPCatalog, FDPDataset, FDPDistribution
 from orcid.orcid_client import OrcidClient
 
 logger = get_logger()
@@ -230,7 +231,7 @@ def export_admin_data_to_dataset(
     if themes and isinstance(key_word, list):
         theme = [URIRef(i) for i in themes if pd.notnull(i)]
 
-    dataset = FDPDataset(
+    dataset = DCATDataset(
         title=title,
         creator=creator,
         description=[Literal(catalog_dict["description"])],
@@ -246,7 +247,7 @@ def export_admin_data_to_dataset(
             admin_template["pav:lastUpdatedOn"], "%Y-%m-%dT%H:%M:%S%z"
         ),
         theme=theme,
-        is_part_of=[fdp_catalog_to_subj_dict[URIRef(catalog_dict["content_graph_id"])]],
+        # is_part_of=[fdp_catalog_to_subj_dict[URIRef(catalog_dict["content_graph_id"])]],
         landing_page=[URIRef(admin_instance.admin_instance_id)],
     )
     return dataset
@@ -305,6 +306,13 @@ def write_datasets(
             if str(dataset.title).startswith("TEST-"):
                 continue
             ds = dataset.to_graph(URIRef(subject))
+            ds.add(
+                (
+                    subject,
+                    DCTERMS.isPartOf,
+                    fdp_catalog_id_to_subj_dict[URIRef(record["content_graph_id"])],
+                )
+            )
             # export += dataset.to_graph(userinfo_format=VCARD.VCard)
             try:
                 fdp_subject = fdp_client.create_and_publish(
@@ -356,10 +364,10 @@ def build_distribution(
             f"Access URL is not provided for the following distribution: {instance_id}"
         )
         return
-    distribution = FDPDistribution(
+    distribution = DCATDistribution(
         title=[LiteralField(value=title)],
         description=[LiteralField(value=description)],
-        is_part_of=[dataset_link],
+        #  is_part_of=[dataset_link],
         access_url=access_url,
     )
     if distribution_format is not None:
@@ -367,7 +375,10 @@ def build_distribution(
     if distribution_license is not None:
         distribution.license = (distribution_license,)
 
-    return distribution.to_graph(URIRef(subject))
+    distr_graph = distribution.to_graph(URIRef(subject))
+    distr_graph.add((subject, DCTERMS.isPartOf, dataset_link))
+
+    return distr_graph
 
 
 def write_distributions(
@@ -423,17 +434,19 @@ def build_top_level_catalog(portal_url: URIRef, fdp_url: URIRef) -> Graph:
     issued = datetime.now().date()
     keywords = [LiteralField(value="COVID-19")]
     homepage = f"{portal_url}{PortalEndPoints.project_overview}"
+    publisher = Agent(name=[LiteralField(value="Health-RI")], identifier=HEALTH_RI_URL)
 
-    catalog = FDPCatalog(
+    catalog = HRICatalog(
         title=[title],
         description=[description],
-        publisher=[HEALTH_RI_URL],
+        publisher=[publisher],
         keyword=keywords,
-        is_part_of=[fdp_url],
+        # is_part_of=[str(fdp_url)],
         release_date=issued,
         landing_page=[homepage],
     )
     export_graph = catalog.to_graph(subject=portal_url)
+    export_graph.add((portal_url, DCTERMS.isPartOf, fdp_url))
     return export_graph
 
 
@@ -459,16 +472,17 @@ def write_catalogs(cedar_export, export_graph, portal_url, fdp_client):
             value=f"focus area: {title.value}", datatype=XSD.string
         )
 
-        focus_area_catalog = FDPCatalog(
+        focus_area_catalog = HRICatalog(
             title=[title],
             description=[description],
             publisher=publishers,
-            is_part_of=[fdp_url],
+            #  is_part_of=[fdp_url],
             themes=[URIRef(item["focus_area_id"])],
             has_version=[URIRef(ZONMW_ONTOLOGY)],
             landing_page=[subject],
         )
         focus_area_graph = focus_area_catalog.to_graph(subject)
+        focus_area_graph.add((subject, DCTERMS.isPartOf, fdp_url))
         try:
             fdp_subject = fdp_client.create_and_publish(
                 resource_type="catalog", metadata=focus_area_graph
