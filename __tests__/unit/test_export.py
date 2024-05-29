@@ -11,7 +11,7 @@ from rdflib import DCAT, DCTERMS, RDF, BNode, Graph, Literal, URIRef
 from rdflib.compare import to_isomorphic
 from requests import Response
 from sempyro import LiteralField
-from sempyro.hri_dcat import HRIDataset
+from sempyro.dcat import DCATDataset
 from sempyro.vcard import VCARD, VCard
 
 from dcat_exports.cedar_source_data import CedarAdminInstance
@@ -20,7 +20,6 @@ from dcat_exports.dcat_bycovid_export import (
     export_admin_data_to_dataset,
     write_distributions,
 )
-from models.bycovid_models import FDPDataset
 
 ROOT_DIR = Path(__file__).parents[2]
 INPUT_DIR = Path(ROOT_DIR, "./example-input")
@@ -217,7 +216,7 @@ def test_add_vcard_info(user_info, info_type, expected_file, empty_graph):
     ]
     publisher = URIRef("http://example.com")
     contact_point = []
-    dcat_instance = FDPDataset(
+    dcat_instance = DCATDataset(
         title=[title],
         description=[description],
         creator=creator,
@@ -256,7 +255,7 @@ def test_user_info_uriref(user_info, info_type, expected_file, empty_graph):
     creator = user_info
     contact_point = []
     publisher = URIRef("http://example.com")
-    dcat_instance = HRIDataset(
+    dcat_instance = DCATDataset(
         uri=uri,
         title=title,
         description=description,

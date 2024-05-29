@@ -4,7 +4,6 @@ from typing import Union
 
 import pandas as pd
 import yaml
-from process_dataset import export_admin_data_to_dataset
 from pydantic import Field
 from rdflib import DCAT, DCTERMS, XSD, Graph, URIRef
 from sempyro import LiteralField
@@ -18,6 +17,7 @@ from core.logger import get_logger
 from covid_portal.covid_portal_client import PortalClient
 from dcat_exports.cedar_source_data import CedarAdminInstance
 from dcat_exports.export_controller import CedarConfig, ExportController
+from dcat_exports.process_dataset import export_admin_data_to_dataset
 from fdp.client import FDPClient
 from orcid.orcid_client import OrcidClient
 
