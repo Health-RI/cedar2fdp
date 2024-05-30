@@ -31,7 +31,7 @@ ZONMW_ONTOLOGY_COVID_FOCUS_AREA_AUTHORS = [
 ]
 HEALTH_RI_URL = "https://www.health-ri.nl"
 DCAT_MEDIATYPE = "https://w3id.org/spar/mediatype"
-DEFAULT_MEDIATYPE = "https://w3id.org/spar/mediatype/text/csv.html"
+DEFAULT_MEDIATYPE = "https://w3id.org/spar/mediatype/text/csv"
 
 
 class FDPDistribution(DCATDistribution):
