@@ -1,3 +1,4 @@
+import encodings
 import logging
 import sys
 from typing import Dict
@@ -31,6 +32,7 @@ class BasicAPIClient:
                 method, url, params=params, data=data, verify=self.ssl_verification
             )
             response.raise_for_status()
+            response.encoding = encodings.utf_8.getregentry().name
             return response
         except requests.exceptions.HTTPError as e:
             logger.error(e)

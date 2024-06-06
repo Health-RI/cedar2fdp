@@ -10,6 +10,9 @@ from freezegun import freeze_time
 from rdflib import DCAT, DCTERMS, RDF, BNode, Graph, Literal, URIRef
 from rdflib.compare import to_isomorphic
 from requests import Response
+from sempyro import LiteralField
+from sempyro.dcat import DCATDataset
+from sempyro.vcard import VCARD, VCard
 
 from dcat_exports.cedar_source_data import CedarAdminInstance
 from dcat_exports.dcat_bycovid_export import (
@@ -17,7 +20,6 @@ from dcat_exports.dcat_bycovid_export import (
     export_admin_data_to_dataset,
     write_distributions,
 )
-from models.bycovid_models import VCARD, DCATDataSet, VCard
 
 ROOT_DIR = Path(__file__).parents[2]
 INPUT_DIR = Path(ROOT_DIR, "./example-input")
@@ -131,12 +133,11 @@ def test_top_level_bycovid(empty_graph, setup):
     expected_path = Path(OUTPUT_DIR, "test_root_catalog.ttl")
     test_path = Path(OUTPUT_DIR, "output-test", "test_root_catalog.ttl")
     # Act
-    build_top_level_catalog(
-        empty_graph,
+    actual_graph = build_top_level_catalog(
         portal_url=URIRef("https://covid19initiatives.health-ri.nl"),
         fdp_url=URIRef("https://health-ri.sandbox.semlab-leiden.nl"),
     )
-    empty_graph.serialize(destination=test_path)
+    actual_graph.serialize(destination=test_path)
     # Assert
     assert compare_files(expected_path, test_path)
 
@@ -207,34 +208,34 @@ def test_add_vcard_info(user_info, info_type, expected_file, empty_graph):
     expected_path = Path(OUTPUT_DIR, expected_file)
     test_path = Path(OUTPUT_DIR, "output-test", expected_file)
     uri = URIRef("http://example.com")
-    title = [Literal("test title")]
-    description = Literal("test description")
+    title = "test title"
+    description = "test description"
     creator = [
-        VCard(full_name=item.get("full_name"), uid=item["uid"]) for item in user_info
+        VCard(full_name=[LiteralField(value=item.get("full_name"))], hasUID=item["uid"])
+        for item in user_info
     ]
     publisher = URIRef("http://example.com")
     contact_point = []
-    dcat_instance = DCATDataSet(
-        uri=uri,
-        title=title,
-        description=description,
+    dcat_instance = DCATDataset(
+        title=[title],
+        description=[description],
         creator=creator,
         contact_point=contact_point,
-        has_version=URIRef("http://example.com"),
-        is_part_of=URIRef("http://example.com"),
-        landing=URIRef("http://example.com/test_project_1"),
-        publisher=publisher,
+        has_version=[URIRef("http://example.com")],
+        is_part_of=[URIRef("http://example.com")],
+        landing_page=[URIRef("http://example.com/test_project_1")],
+        publisher=[publisher],
     )
-    empty_graph.add((uri, RDF.type, DCAT.Dataset))
-    dcat_instance.add_vcard_info(
-        attribute_name="creator",
-        graph=empty_graph,
-        subject=dcat_instance.uri,
-        predicate=DCTERMS.creator,
-        userinfo_format=info_type,
-    )
+    # empty_graph.add((uri, RDF.type, DCAT.Dataset))
+    # dcat_instance.add_vcard_info(
+    #     attribute_name="creator",
+    #     graph=empty_graph,
+    #     subject=dcat_instance.uri,
+    #     predicate=DCTERMS.creator,
+    #     userinfo_format=info_type,
+    # )
     expected = to_isomorphic(Graph().parse(expected_path))
-    actual = to_isomorphic(empty_graph)
+    actual = to_isomorphic(dcat_instance.to_graph(URIRef("http://example.com")))
     assert actual == expected
 
 
@@ -254,7 +255,7 @@ def test_user_info_uriref(user_info, info_type, expected_file, empty_graph):
     creator = user_info
     contact_point = []
     publisher = URIRef("http://example.com")
-    dcat_instance = DCATDataSet(
+    dcat_instance = DCATDataset(
         uri=uri,
         title=title,
         description=description,

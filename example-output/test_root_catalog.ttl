@@ -8,8 +8,10 @@
 To facilitate and stimulate an integrated health data infrastructure, Health-RI facilitates investigators by connecting communities, providing data services and tools, and presenting an overview of COVID-19 related initiatives, provided on this site.""" ;
     dcterms:isPartOf <https://health-ri.sandbox.semlab-leiden.nl> ;
     dcterms:issued "2023-06-06"^^xsd:date ;
-    dcterms:publisher <https://www.health-ri.nl> ;
+    dcterms:publisher [ a foaf:Agent ;
+            dcterms:identifier "https://www.health-ri.nl" ;
+            foaf:name "Health-RI" ] ;
     dcterms:title "COVID-19 related data initiatives - Project overview" ;
     dcat:keyword "COVID-19" ;
-    foaf:homepage <https://covid19initiatives.health-ri.nl/p/ProjectOverview> .
+    dcat:landingPage <https://covid19initiatives.health-ri.nl/p/ProjectOverview> .
 
