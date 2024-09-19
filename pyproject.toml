@@ -6,7 +6,7 @@ authors = ["Health-RI"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.12"
 pyyaml = "^6.0"
 colorama = "^0.4.6"
 pytest = "^7.3.1"
@@ -14,7 +14,8 @@ requests = "^2.30.0"
 rdflib = "7.0.0"
 pydantic = "2.5.2"
 pandas = "^2.0.1"
-sempyro = "^1.2.1"
+sempyro = "^1.4.0"
+w3lib = "^2.2.1"
 
 
 [tool.poetry.group.dev.dependencies]
