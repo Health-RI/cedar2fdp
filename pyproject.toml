@@ -20,7 +20,7 @@ w3lib = "^2.2.1"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.3.0"
-setuptools = "^67.7.2"
+setuptools = "^80.9.0"
 freezegun = "^1.2.2"
 pytest-cov = "^6.1.1"
 
