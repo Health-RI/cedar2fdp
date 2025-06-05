@@ -22,7 +22,7 @@ w3lib = "^2.2.1"
 black = "^23.3.0"
 setuptools = "^67.7.2"
 freezegun = "^1.2.2"
-pytest-cov = "^4.1.0"
+pytest-cov = "^6.1.1"
 
 [build-system]
 requires = ["poetry-core"]
