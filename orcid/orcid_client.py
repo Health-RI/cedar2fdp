@@ -17,10 +17,11 @@ class OrcidClient(BasicAPIClient):
         self.token = token
         headers = self._get_headers()
         self.saved_names = {}
+        self.saved_emails = {}
         super().__init__(base_url, headers)
 
     def _get_headers(self):
-        return {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}
+        return {"Accept": "application/json"}
 
     def get_orcid_record_info(self, record_id: Union[str, URIRef]) -> Dict:
         """Queries ORCID record by ID or full link, returns response decoded to json dictionary"""
@@ -59,3 +60,23 @@ class OrcidClient(BasicAPIClient):
         full_name = f"{first_name} {last_name}"
         self.saved_names[user_id] = full_name
         return full_name
+
+    def get_email(self, user_id) -> Union[str, None]:
+        if user_id in self.saved_emails.keys():
+            return self.saved_emails[user_id]
+        try:
+            orcid_data = self.get_orcid_record_info(user_id)
+        except (SystemExit, JSONDecodeError):
+            logger.warning(f"User {user_id} not found in ORCID system.")
+            self.saved_emails[user_id] = None
+            return None
+        email_data = orcid_data["person"]["emails"]["email"]
+
+        for email_info in email_data:
+            if "email" in email_info:
+                email = email_info["email"]
+                self.saved_emails[user_id] = email
+                return email
+
+        logger.warning(f"Email is not provided by user {user_id}")
+        return None
