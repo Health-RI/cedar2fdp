@@ -55,6 +55,11 @@ ADMIN_TEMPLATE_MAPPING = {
         "https://schema.metadatacenter.org/properties/e6ba0001-590d-4400-a296-683dee6bf72a",
     ),
     "createdOn": (),
+    "funderProjectIdentifier": (
+        "https://schema.metadatacenter.org/properties/792cb92d-dd83-4b0c-b0ba-6392913c9b09",
+        "https://schema.metadatacenter.org/properties/84e162fa-f1c7-4da4-8dcf-8534c46e299e",
+        "https://schema.metadatacenter.org/properties/74b66558-1b2c-470f-a4f0-c52a6a69a91f",
+    ),
 }
 
 # As per documentation https://support.orcid.org/hc/en-us/articles/360006897674-Structure-of-the-ORCID-Identifier
@@ -67,6 +72,7 @@ ORCID_PATTERN = re.compile(
 
 DEFAULT_COVID_THEME = "http://purl.bioontology.org/ontology/ICD10CM/U07.1"
 
+ZONMW_SEARCHPAGE_URL = "https://projecten.zonmw.nl/?input="
 
 class VCardKind(VCard):
     """
@@ -250,6 +256,7 @@ def export_admin_data_to_dataset(
             f"setting to default ('COVID-19', {DEFAULT_COVID_THEME})"
         )
         theme = [URIRef(DEFAULT_COVID_THEME)]
+    landing_page = [ZONMW_SEARCHPAGE_URL+project_id for project_id in admin_instance.get_attribute(ADMIN_TEMPLATE_MAPPING["funderProjectIdentifier"])]
 
     dataset = DCATDataset(
         title=title,
@@ -267,7 +274,7 @@ def export_admin_data_to_dataset(
             admin_template["pav:lastUpdatedOn"], "%Y-%m-%dT%H:%M:%S%z"
         ),
         theme=theme,
-        landing_page=[URIRef(catalog_dict["admin_graph_id"])],
+        landing_page=landing_page,
     )
 
     dataset_graph = dataset.to_graph(URIRef(admin_instance.admin_instance_id))
