@@ -108,17 +108,24 @@ def user_id_to_vcard_or_agent(
             f"Unexpected creator value: {creator_item}, Admin Template Id: {admin_instance_id}"
         )
     full_name = orcid_client.get_full_name(creator_item)
+    email = orcid_client.get_email(creator_item)
+
     if full_name:
         full_name = Literal(full_name)
+    elif email:
+        full_name = Literal(email)
     else:
         full_name = BNode()
+
+    email = [URIRef(f"mailto:{email}")] if email else []
+
     if return_type == UserTypes.vcard:
         user_object = VCardKind(
-            full_name=[LiteralField(value=full_name)], hasUID=URIRef(creator_item)
+            full_name=[LiteralField(value=full_name)], hasUID=URIRef(creator_item), hasEmail=email
         )
     elif return_type == UserTypes.agent:
         user_object = Agent(
-            name=[LiteralField(value=full_name)], identifier=creator_item
+            name=[LiteralField(value=full_name)], identifier=creator_item, mbox=email
         )
     else:
         raise ValueError(
