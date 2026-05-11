@@ -14,7 +14,7 @@ from sempyro.vcard import VCARD
 
 from cedar.client import CedarClient
 from core.logger import get_logger
-from covid_portal.covid_portal_client import PortalClient
+from covid_portal.covid_portal_client import PortalClient, StaticPortalClient
 from dcat_exports.cedar_source_data import CedarAdminInstance
 from dcat_exports.export_controller import CedarConfig, ExportController
 from dcat_exports.process_dataset import export_admin_data_to_dataset
@@ -377,11 +377,8 @@ def export_dcat():
         token=config["orcid"]["token"], base_url=config["orcid"]["base_url"]
     )
     portal_url = config["covid_portal"]["base_url"]
-    portal_client = PortalClient(
-        base_url=f"{portal_url}/rest",
-        username=config["covid_portal"]["username"],
-        password=config["covid_portal"]["password"],
-    )
+    with open(config["covid_portal"]["static_list"], 'rb') as f:
+        portal_client = StaticPortalClient(f.read())
     fdp_url = URIRef(config["fdp"]["base_url"])
 
     fdp_client = FDPClient(
