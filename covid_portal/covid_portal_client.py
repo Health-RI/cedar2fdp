@@ -1,5 +1,6 @@
 """Module contains a REST API client for COVID-19 portal"""
 import base64
+import requests
 from typing import Union
 
 from core.api_client import BasicAPIClient
@@ -36,4 +37,17 @@ class PortalClient(BasicAPIClient):
         path = f"{self.base_url}/project/v1/ProjectInformation/Project"
         params = {"UniqueId": str(project_id)}
         response = self.get(path=path, params=params)
+        return response
+
+class StaticPortalClient(PortalClient):
+    """COVID portal client using a static export of the real API."""
+
+    def __init__(self, static_list: bytes):
+        self.projects = static_list
+        super().__init__("", "", "")
+
+    def get_projects_list(self):
+        response = requests.Response()
+        response.status_code = 200
+        response._content = self.projects
         return response
